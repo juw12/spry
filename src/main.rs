@@ -189,7 +189,8 @@ fn status(json: bool) {
     } else if !s["fg_known"].as_bool().unwrap_or(false) {
         "on, rules only (this desktop does not tell which app is in front)".to_string()
     } else {
-        format!("on, {} is in front", s["fg"].as_str().unwrap_or("?"))
+        let mode = if s["config"]["mode"] == "performance" { "Performance" } else { "Saver" };
+        format!("on in {mode} mode, {} is in front", s["fg"].as_str().unwrap_or("?"))
     };
     println!("Spry {VERSION}: {state}");
     println!(

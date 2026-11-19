@@ -13,6 +13,11 @@ pub const EASE_TEXT: &str = "macOS background state: lowest CPU priority and thr
 #[cfg(not(target_os = "macos"))]
 pub const EASE_TEXT: &str =
     "idle disk priority; under pressure part of the processor is kept free, plus short pause-and-resume pulses";
+/// The same for Saver mode, where the deeper hold is used all the time.
+#[cfg(target_os = "macos")]
+pub const SAVER_TEXT: &str = EASE_TEXT;
+#[cfg(not(target_os = "macos"))]
+pub const SAVER_TEXT: &str = "idle disk priority, and part of the processor is kept free";
 pub const CAN_TRIM: bool = false;
 
 pub fn attach_console() {}

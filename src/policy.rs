@@ -1,6 +1,6 @@
 //! The decision: which background processes to hold back, and how. Pure logic, no system calls.
 
-use crate::config::{Config, is_launcher, is_protected, matches_any};
+use crate::config::{Config, Mode, is_launcher, is_protected, matches_any};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
@@ -242,9 +242,11 @@ pub fn decide(cfg: &Config, snap: &Snapshot, st: &mut PolicyState, now: Instant)
     if !rests {
         st.rest_since = None;
     }
-    let lend = !cfg.resource_saver && cfg.lend && rests && now.duration_since(*st.rest_since.get_or_insert(now)) >= LEND_AFTER;
+    // Saver mode is there to use less: nothing is lent, and the deeper hold is used all the time.
+    let saver = cfg.mode == Mode::Saver;
+    let lend = !saver && cfg.lend && rests && now.duration_since(*st.rest_since.get_or_insert(now)) >= LEND_AFTER;
 
-    let mut plan = Plan { family, deep: st.pressure, ..Plan::default() };
+    let mut plan = Plan { family, deep: st.pressure || saver, ..Plan::default() };
 
     for p in &snap.procs {
         if !p.mine || p.pid <= 1 || plan.family.contains(&p.pid) || own.contains(&p.pid) {
@@ -275,7 +277,7 @@ pub fn decide(cfg: &Config, snap: &Snapshot, st: &mut PolicyState, now: Instant)
         let busy = fg_known && p.cpu >= cfg.hog_percent && !just_left;
         if rule == Rule::Always || busy || (fg_known && st.sticky.contains(&p.pid)) {
             st.sticky.insert(p.pid);
-            let pulse = !cfg.resource_saver && cfg.strong && st.pressure && (p.cpu >= PULSE_CPU || st.pulsed.contains(&p.pid));
+            let pulse = cfg.strong && st.pressure && (p.cpu >= PULSE_CPU || st.pulsed.contains(&p.pid));
             if pulse {
                 st.pulsed.insert(p.pid);
             }
@@ -342,13 +344,18 @@ mod tests {
         }
     }
 
+    /// The settings of a Spry from before there were modes: the app in front first.
+    fn performance() -> Config {
+        Config { mode: Mode::Performance, ..Config::default() }
+    }
+
     fn run(cfg: &Config, snap: &Snapshot) -> Plan {
         decide(cfg, snap, &mut PolicyState::default(), Instant::now())
     }
 
     #[test]
     fn busy_background_is_eased_and_the_front_app_is_not() {
-        let plan = run(&Config::default(), &desk(Some(20)));
+        let plan = run(&performance(), &desk(Some(20)));
         assert_eq!(plan.levels.get(&31), Some(&Level::Ease));
         assert!(!plan.levels.contains_key(&30), "a quiet process is left alone");
         assert!(!plan.levels.contains_key(&20) && !plan.levels.contains_key(&21), "front app and its children");
@@ -356,47 +363,68 @@ mod tests {
     }
 
     #[test]
-    fn saver_does_not_lend_or_pulse_and_leaves_the_foreground_and_never_rules_alone() {
-        let cfg = Config { resource_saver: true, strong: true, lend: true, ..Config::default() };
+    fn saver_is_the_default_and_keeps_busy_background_apps_held_while_the_front_app_rests() {
+        let saver = Config::default();
+        assert_eq!(saver.mode, Mode::Saver);
         let mut snap = desk(Some(20));
-        snap.cpu_total = 90.0;
         for proc in &mut snap.procs {
             if proc.pid == 20 || proc.pid == 21 {
-                proc.cpu_now = 0.0;
+                proc.cpu_now = 0.0; // the app in front rests
             }
         }
         let t = Instant::now();
         let mut st = PolicyState::default();
-        for secs in [0, 1, 5, 10, 20] {
-            let plan = decide(&cfg, &snap, &mut st, t + Duration::from_secs(secs));
-            assert_eq!(plan.levels.get(&31), Some(&Level::Ease));
-            assert!(!plan.levels.contains_key(&20) && !plan.levels.contains_key(&21));
+        for secs in [0, 1, 5, 10, 20, 600] {
+            let plan = decide(&saver, &snap, &mut st, t + Duration::from_secs(secs));
+            assert_eq!(plan.levels.get(&31), Some(&Level::Ease), "held after {secs} s of rest: nothing is lent");
+            assert!(plan.deep, "the deeper hold, without waiting for pressure");
+            assert!(!plan.levels.contains_key(&20) && !plan.levels.contains_key(&21), "never the app in front");
+            assert!(!plan.levels.contains_key(&30), "a quiet process is left alone");
         }
-        let never = Config { never_slow: vec!["browser".into()], ..cfg.clone() };
-        assert!(!run(&never, &snap).levels.contains_key(&31));
-        // Disabling the profile does not erase the original lend/strong settings.
-        let normal = Config { resource_saver: false, ..cfg };
-        decide(&normal, &snap, &mut st, t + Duration::from_secs(21));
-        assert_eq!(decide(&normal, &snap, &mut st, t + Duration::from_secs(28)).levels.get(&31), Some(&Level::Lent));
+        let never = Config { never_slow: vec!["browser".into()], ..saver.clone() };
+        assert!(!run(&never, &snap).levels.contains_key(&31), "a Never slow rule still wins");
+
+        // The same machine in Performance mode: the idle time is lent, and the hold is the light one.
+        let performance = performance();
+        let mut st = PolicyState::default();
+        let first = decide(&performance, &snap, &mut st, t);
+        assert!(!first.deep);
+        assert_eq!(first.levels.get(&31), Some(&Level::Ease));
+        // The rest counts from the second look at the same app in front; six seconds later it is lent.
+        decide(&performance, &snap, &mut st, t + Duration::from_secs(1));
+        assert_eq!(
+            decide(&performance, &snap, &mut st, t + Duration::from_secs(8)).levels.get(&31),
+            Some(&Level::Lent)
+        );
+    }
+
+    #[test]
+    fn switching_mode_keeps_the_lend_setting_for_performance() {
+        let stored = r#"{"mode":"performance","lend":false,"resource_saver":true}"#;
+        let cfg: Config = serde_json::from_str(stored).unwrap();
+        assert_eq!((cfg.mode, cfg.lend), (Mode::Performance, false), "an older settings file still reads");
+        let untouched: Config = serde_json::from_str("{}").unwrap();
+        assert_eq!((untouched.mode, untouched.lend), (Mode::Saver, true));
+        assert!(serde_json::to_string(&untouched).unwrap().contains(r#""mode":"saver""#));
     }
 
     #[test]
     fn focus_on_a_child_window_covers_the_whole_app() {
-        let plan = run(&Config::default(), &desk(Some(21)));
+        let plan = run(&performance(), &desk(Some(21)));
         assert!(plan.family.contains(&20) && plan.family.contains(&21));
         assert!(!plan.levels.contains_key(&20));
     }
 
     #[test]
     fn desktop_in_front_does_not_exempt_every_app() {
-        let plan = run(&Config::default(), &desk(Some(10)));
+        let plan = run(&performance(), &desk(Some(10)));
         assert_eq!(plan.family.len(), 1);
         assert!(plan.levels.contains_key(&20) && plan.levels.contains_key(&31));
     }
 
     #[test]
     fn unknown_front_app_means_rules_only() {
-        let mut cfg = Config::default();
+        let mut cfg = performance();
         assert!(run(&cfg, &desk(None)).levels.is_empty(), "never guess which app is in use");
         cfg.always_slow = vec!["browser".into()];
         cfg.freeze = vec!["editor".into()];
@@ -411,7 +439,7 @@ mod tests {
 
     #[test]
     fn never_slow_and_protected_are_left_alone() {
-        let cfg = Config { never_slow: vec!["browser".into()], ..Config::default() };
+        let cfg = Config { never_slow: vec!["browser".into()], ..performance() };
         let mut snap = desk(Some(20));
         snap.procs.push(p(50, 10, "zoom", 95.0));
         snap.procs.push(p(51, 10, "other", 95.0));
@@ -422,13 +450,13 @@ mod tests {
 
     #[test]
     fn rule_on_an_app_covers_what_it_started() {
-        let cfg = Config { never_slow: vec!["editor".into()], ..Config::default() };
+        let cfg = Config { never_slow: vec!["editor".into()], ..performance() };
         assert!(!run(&cfg, &desk(Some(30))).levels.contains_key(&21));
     }
 
     #[test]
     fn an_app_you_just_left_keeps_full_speed_for_a_moment() {
-        let cfg = Config::default();
+        let cfg = performance();
         let mut st = PolicyState::default();
         let t0 = Instant::now();
         decide(&cfg, &desk(Some(20)), &mut st, t0);
@@ -443,7 +471,7 @@ mod tests {
 
     #[test]
     fn freeze_waits_then_thaws_on_focus() {
-        let cfg = Config { freeze: vec!["browser".into()], ..Config::default() };
+        let cfg = Config { freeze: vec!["browser".into()], ..performance() };
         let mut st = PolicyState::default();
         let t0 = Instant::now();
         assert!(!decide(&cfg, &desk(Some(20)), &mut st, t0).levels.contains_key(&30));
@@ -456,7 +484,7 @@ mod tests {
 
     #[test]
     fn pulses_need_strong_mode_and_lasting_pressure() {
-        let cfg = Config { strong: true, ..Config::default() };
+        let cfg = Config { strong: true, ..performance() };
         let mut snap = desk(Some(20));
         snap.cpu_total = 97.0;
         let mut st = PolicyState::default();
@@ -474,7 +502,7 @@ mod tests {
         assert!(!calm.deep);
         assert_eq!(calm.levels.get(&31), Some(&Level::Ease));
 
-        let cfg = Config { strong: false, ..Config::default() };
+        let cfg = Config { strong: false, ..performance() };
         snap.cpu_total = 97.0;
         let mut st = PolicyState::default();
         decide(&cfg, &snap, &mut st, t0);
@@ -484,7 +512,7 @@ mod tests {
 
     #[test]
     fn memory_is_asked_back_only_when_tight_and_not_from_the_front_app() {
-        let cfg = Config::default();
+        let cfg = performance();
         let mut snap = desk(Some(20));
         assert!(run(&cfg, &snap).trim.is_empty());
         snap.mem_free_pct = 6.0;
@@ -501,7 +529,7 @@ mod tests {
         let mut snap = desk(Some(20));
         // Process 21 claims parent 20, but "20" started later: not really its parent.
         snap.procs[2].start = 5;
-        let plan = run(&Config::default(), &snap);
+        let plan = run(&performance(), &snap);
         assert!(!plan.family.contains(&21));
         assert_eq!(plan.levels.get(&21), Some(&Level::Ease));
     }
@@ -516,7 +544,7 @@ mod tests {
 
     #[test]
     fn held_apps_are_lent_the_time_while_the_front_app_rests() {
-        let cfg = Config { strong: true, ..Config::default() };
+        let cfg = Config { strong: true, ..performance() };
         let mut st = PolicyState::default();
         let t0 = Instant::now();
         let at = |secs: u64| t0 + Duration::from_secs(secs);
@@ -550,7 +578,7 @@ mod tests {
 
     #[test]
     fn switching_apps_counts_as_working() {
-        let cfg = Config::default();
+        let cfg = performance();
         let mut st = PolicyState::default();
         let t0 = Instant::now();
         let at = |secs: u64| t0 + Duration::from_secs(secs);
@@ -576,20 +604,20 @@ mod tests {
             decide(cfg, snap, &mut st, t0 + Duration::from_secs(1));
             decide(cfg, snap, &mut st, later).levels.get(&31).copied()
         };
-        assert_eq!(lent(&Config::default(), &resting(0.0)), Some(Level::Lent));
-        assert_eq!(lent(&Config { lend: false, ..Config::default() }, &resting(0.0)), Some(Level::Ease));
-        let named = Config { always_slow: vec!["browser".into()], ..Config::default() };
+        assert_eq!(lent(&performance(), &resting(0.0)), Some(Level::Lent));
+        assert_eq!(lent(&Config { lend: false, ..performance() }, &resting(0.0)), Some(Level::Ease));
+        let named = Config { always_slow: vec!["browser".into()], ..performance() };
         assert_eq!(lent(&named, &resting(0.0)), Some(Level::Ease), "a rule by name is kept");
         let mut blind = resting(0.0);
         blind.fg = None;
         assert_eq!(lent(&named, &blind), Some(Level::Ease), "front app unknown: nobody knows it rests");
-        let frozen = Config { freeze: vec!["browser".into()], ..Config::default() };
+        let frozen = Config { freeze: vec!["browser".into()], ..performance() };
         assert_eq!(lent(&frozen, &resting(0.0)), Some(Level::Freeze));
     }
 
     #[test]
     fn switched_off_rules_are_plain_auto() {
-        let cfg = Config { freeze: vec!["a".into()], ..Config::default() };
+        let cfg = Config { freeze: vec!["a".into()], ..performance() };
         assert_eq!(rule_for_name(&cfg, "a"), Rule::Freeze);
         assert_eq!(rule_for_name(&cfg, "b"), Rule::Auto);
     }

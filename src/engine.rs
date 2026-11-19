@@ -598,7 +598,7 @@ fn status_json(
         "cores": crate::bench::cores(),
         "self_cpu": me.map_or(0.0, |p| p.cpu),
         "self_mem": me.map_or(0, |p| p.mem),
-        "ease_text": platform::EASE_TEXT,
+        "ease_text": if cfg.mode == config::Mode::Saver { platform::SAVER_TEXT } else { platform::EASE_TEXT },
         "can_trim": platform::CAN_TRIM,
         "autostart": shared.autostart.load(Ordering::Relaxed),
         "update": *shared.update.lock().unwrap(),
@@ -637,7 +637,8 @@ pub fn run_loop(shared: &Shared) {
         let cfg = shared.cfg.lock().unwrap().clone();
         let watched = shared.watched.lock().unwrap().is_some_and(|t| t.elapsed() < WATCHED_FOR);
         let recording = shared.reference.lock().unwrap().active();
-        let every = scan_interval(cfg.enabled && cfg.resource_saver, watched, recording, snap.cpu_total);
+        let saver = cfg.enabled && cfg.mode == config::Mode::Saver;
+        let every = scan_interval(saver, watched, recording, snap.cpu_total);
         let slow = measured.is_none_or(|t| t.elapsed() >= every);
         if slow {
             snap = sampler.sample();

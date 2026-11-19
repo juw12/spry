@@ -22,6 +22,8 @@ use windows_sys::core::BOOL;
 
 pub const EASE_TEXT: &str =
     "lower priority; under pressure also Efficiency mode, low memory priority and part of the processor kept free";
+/// The same for Saver mode, where the deeper hold is used all the time.
+pub const SAVER_TEXT: &str = "lower priority, Efficiency mode, low memory priority and part of the processor kept free";
 pub const CAN_TRIM: bool = true;
 
 #[link(name = "ntdll")]

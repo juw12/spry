@@ -276,7 +276,7 @@ td.num { font-family: var(--mono); font-size: 13px; }
     </div>
 
     <section class="view" data-view="overview">
-      <div class="page-head"><div><h1>Overview</h1><p>Spry holds back busy apps in the background so the app in front gets the processor. Everything is put back when Spry is paused, switched off or quit.</p></div></div>
+      <div class="page-head"><div><h1>Overview</h1><p id="overview-lede">Spry holds back busy apps in the background. Everything is put back when Spry is paused, switched off or quit.</p></div></div>
       <div class="meters">
         <div class="meter"><div class="label">Processor in use</div><div class="value" id="cpu">–</div><div class="bar"><i id="cpu-bar"></i></div></div>
         <div class="meter"><div class="label">Memory in use</div><div class="value" id="mem">–</div><div class="bar"><i id="mem-bar"></i></div></div>
@@ -315,7 +315,7 @@ td.num { font-family: var(--mono); font-size: 13px; }
     </section>
 
     <section class="view" data-view="measure" hidden>
-      <div class="page-head"><div><h1>Measure</h1><p>Compare the same foreground task under background load, first with no hold (Off), then with Spry’s normal hold (On). This test does not change your settings.</p></div></div>
+      <div class="page-head"><div><h1>Measure</h1><p>Starts busy background processes for about a minute and compares Off with On: what the app in front gets done, and how much work the background still does while you rest. This test does not change your settings.</p></div></div>
       <div class="actions"><button id="measure" class="main">Run comparison</button><span class="sub" role="status" id="bench-note">No measurement yet. A run takes about a minute.</span></div>
       <div id="bench-chart" class="compare-grid" hidden></div>
       <p class="sub" id="bench-cost"></p>
@@ -327,9 +327,12 @@ td.num { font-family: var(--mono); font-size: 13px; }
     <section class="view" data-view="settings" hidden>
       <div class="page-head"><div><h1>Settings</h1><p id="counts"></p></div><div class="actions"><button id="quit">Quit Spry</button></div></div>
       <div class="row"><input type="checkbox" id="autostart"><label for="autostart">Start Spry when I sign in</label></div>
-      <div class="row"><input type="checkbox" id="saver"><label for="saver">Resource Saver<br><span class="sub">While Spry is on, keep busy background apps at lower priority even when the foreground rests. Spry scans less often and skips automatic pulses. Background work may take longer.</span></label></div>
+      <h2 class="section-title">What Spry is for</h2>
+      <div class="row"><input type="radio" name="mode" id="mode-saver" value="saver"><label for="mode-saver">Saver: use less<br><span class="sub">Busy apps stay held back for as long as they are in the background, also while you read or step away. The computer does less work, so it uses less processor and stays cooler. Work in the background takes longer.</span></label></div>
+      <div class="row"><input type="radio" name="mode" id="mode-performance" value="performance"><label for="mode-performance">Performance: the app in front first<br><span class="sub">Busy background apps are held back only while the app in front is working. While it rests they run at full speed again, so the computer uses about as much as without Spry.</span></label></div>
+      <h2 class="section-title">More</h2>
       <div class="row"><input type="checkbox" id="strong"><label for="strong">Strong mode<br><span class="sub">When the whole processor is busy, also pause the heaviest background processes in short pulses (120 ms paused, 80 ms running). They take longer to finish.</span></label></div>
-      <div class="row"><input type="checkbox" id="lend"><label for="lend">Lend idle time<br><span class="sub">While the app in front rests (almost no processor use for 6 seconds), held apps run at full speed. The hold is back when it works again. Apps with the rule “Always slow” or “Freeze” stay held.</span></label></div>
+      <div class="row"><input type="checkbox" id="lend"><label for="lend">Lend idle time<br><span class="sub">Performance mode only. While the app in front rests (almost no processor use for 6 seconds), held apps run at full speed. The hold is back when it works again. Apps with the rule “Always slow” or “Freeze” stay held.</span></label></div>
       <div class="row" id="trim-row" hidden><input type="checkbox" id="trim"><label for="trim">Give memory back when it runs low<br><span class="sub">Asks large background apps to release memory they are not using. They may load a moment longer when you return to them.</span></label></div>
       <p class="fine"><strong>How Spry holds an app back on this system:</strong> <span id="ease-text"></span>. The app in front is never touched. Everything is put back when Spry is paused, switched off or quit.</p>
       <p class="fine"><strong>What Spry cannot do:</strong> it does not add memory or make the processor faster. It decides who goes first: while the app in front works, the apps behind it wait and take longer. While it rests, they get the processor back.</p>
@@ -514,7 +517,11 @@ window.addEventListener("resize", paintTrend);
 
 function render(s, fresh = true) {
   state = s;
-  const saver = s.enabled && s.config.resource_saver;
+  const saverMode = s.config.mode !== "performance";
+  const saver = s.enabled && saverMode;
+  $("overview-lede").textContent = saverMode
+    ? "Spry keeps busy apps held back for as long as they are in the background, so the computer uses less. The app in front is never touched. Everything is put back when Spry is paused, switched off or quit."
+    : "Spry holds back busy apps in the background so the app in front gets the processor, and gives them the idle time back while it rests. Everything is put back when Spry is paused, switched off or quit.";
   const reference = s.off_reference || {};
   const recording = Boolean(reference.recording);
   $("record-reference").textContent = recording ? "Cancel recording" : reference.last ? "Refresh OFF reference" : "Record OFF reference";
@@ -530,7 +537,7 @@ function render(s, fresh = true) {
   else if (paused) { pill.className = "pill warn"; pill.textContent = "Paused, back in " + clock(s.paused_secs); }
   else if (!s.fg_known) { pill.className = "pill warn"; pill.textContent = "On, rules only"; }
   else { pill.className = "pill"; pill.textContent = "On" + (s.fg ? ", " + s.fg + " is in front" : ""); }
-  $("side-state").textContent = recording ? "Recording OFF" : !s.enabled ? "Switched off" : paused ? "Paused" : saver ? "On · Resource Saver" : "On";
+  $("side-state").textContent = recording ? "Recording OFF" : !s.enabled ? "Switched off" : paused ? "Paused" : saverMode ? "On · Saver" : "On · Performance";
   $("side-front").textContent = recording || !s.enabled || paused ? "Nothing is held back"
     : !s.fg_known ? "Rules only" : s.fg ? s.fg + " is in front" : "\u00a0";
   $("n-held").textContent = s.held.length || "";
@@ -565,6 +572,7 @@ function render(s, fresh = true) {
       ? "The app in front is resting: " + count + (lent === 1 ? " runs" : " run") + " at full speed until it works again."
       : lent ? "The app in front is resting: " + lent + " of " + count + (lent === 1 ? " runs" : " run")
         + " at full speed until it works again. The rest stay held by their rule."
+      : saverMode ? count + (s.held.length === 1 ? " is" : " are") + " held back while in the background, so the computer uses less."
       : count + (s.held.length === 1 ? " gives" : " give") + " way to the app in front.";
     held.append(el("tr", null, el("th", { textContent: "Process" }), el("th", { textContent: "How" }),
       el("th", { className: "num", textContent: "Processor" }), el("th", { className: "num hide-narrow", textContent: "Memory" }),
@@ -615,10 +623,14 @@ function render(s, fresh = true) {
     }
   }
 
-  for (const [id, on] of [["autostart", s.autostart], ["saver", s.config.resource_saver], ["strong", !s.config.resource_saver && s.config.strong], ["lend", !s.config.resource_saver && s.config.lend], ["trim", s.config.trim_memory]]) {
+  for (const [id, on] of [["autostart", s.autostart], ["strong", s.config.strong], ["lend", s.config.lend], ["trim", s.config.trim_memory]]) {
     if (document.activeElement !== $(id)) $(id).checked = on;
   }
-  $("strong").disabled = $("lend").disabled = Boolean(s.config.resource_saver);
+  for (const mode of ["saver", "performance"]) {
+    if (document.activeElement !== $("mode-" + mode)) $("mode-" + mode).checked = (saverMode ? "saver" : "performance") === mode;
+  }
+  $("lend").disabled = saverMode; // nothing is lent in Saver mode; the choice is kept for Performance
+  if (lastReport && shownMode !== s.config.mode) presentComparison(lastReport);
   $("trim-row").hidden = !s.can_trim;
   $("ease-text").textContent = s.ease_text;
   $("version").textContent = "Spry " + s.version;
@@ -680,7 +692,7 @@ $("record-reference").onclick = async () => {
   finally { $("record-reference").disabled = false; }
 };
 $("apps-more").onclick = () => { showQuiet = !showQuiet; busyUntil = 0; if (state) render(state); };
-$("saver").onchange = e => saveConfig(cfg => { cfg.resource_saver = e.target.checked; });
+for (const mode of ["saver", "performance"]) $("mode-" + mode).onchange = e => { if (e.target.checked) saveConfig(cfg => { cfg.mode = mode; }); };
 $("strong").onchange = e => saveConfig(cfg => { cfg.strong = e.target.checked; });
 $("lend").onchange = e => saveConfig(cfg => { cfg.lend = e.target.checked; });
 $("trim").onchange = e => saveConfig(cfg => { cfg.trim_memory = e.target.checked; });
@@ -762,11 +774,38 @@ function metricCard(metric, off, on) {
   card.append(el("p", {className:"delta" + (same ? "" : good ? " good" : " bad"), textContent:summary}));
   return card;
 }
+// The other side of the comparison: how much work the busy background apps still do while you rest.
+// Saver mode keeps them held (the saving); Performance mode gives them the idle time back.
+function backgroundCard(b, mode, lends) {
+  const lent = mode === "performance" && lends;
+  const share = 100 * (lent ? b.rest_share_lent : b.rest_share_held);
+  const name = mode === "performance" ? "Performance" : "Saver";
+  const card = el("article", {className:"compare-card"}, el("h3", {textContent:"Background work while you rest"}),
+    el("p", {className:"direction", textContent:"Lower means the computer does less"}));
+  for (const [label, value, kind] of [["Off", 100, "off"], ["On", share, "on"]]) {
+    const bar = el("i");
+    bar.style.width = Math.max(0, Math.min(100, value)) + "%";
+    card.append(el("div", {className:"compare-bar " + kind},
+      el("span", {textContent:label}), el("span", {className:"track"}, bar), el("span", {textContent:Math.round(value) + "%"})));
+  }
+  const less = Math.round(100 - share);
+  card.append(el("p", {className:"delta" + (less >= 10 ? " good" : ""), id:"background-delta", textContent:less >= 10
+    ? name + " mode: " + less + "% less work in the background, so less processor use and heat. Background jobs take longer."
+    : name + " mode: about the same as off. " + (lent ? "The idle time is given back." : "Little is held on this system.")}));
+  return card;
+}
+let lastReport = null, shownMode = null;
 function presentComparison(r) {
   if (!r || ![r.quiet, r.busy, r.eased, ...(r.pulsed ? [r.pulsed] : [])]
       .every(p => p && metrics.every(m => Number.isFinite(p[m.key]) && p[m.key] >= 0))) return false;
   const chart = $("bench-chart");
   chart.replaceChildren(...metrics.map(m => metricCard(m, r.busy[m.key], r.eased[m.key])));
+  const b0 = r.background;
+  lastReport = r;
+  shownMode = state?.config?.mode || null;
+  if (b0 && Number.isFinite(b0.rest_share_held) && Number.isFinite(b0.rest_share_lent)) {
+    chart.append(backgroundCard(b0, shownMode || "saver", state ? state.config.lend : true));
+  }
   chart.hidden = false;
   const table = $("bench");
   table.replaceChildren(el("tr", null, ...["Test phase", "Work/s", "Typical (ms)", "p95 (ms)"].map((t, i) =>
@@ -779,7 +818,8 @@ function presentComparison(r) {
   const b = r.background;
   $("bench-cost").textContent = b && b.front_works_off > 0 && Number.isFinite(b.rest_share_lent)
     ? "Background trade-off: while the foreground worked, held apps did " + Math.round(100*b.front_works_held/b.front_works_off) +
-      "% of their unheld work. While it rested, they did " + Math.round(100*b.rest_share_lent) + "%." : "";
+      "% of their unheld work. While it rested, they did " +
+      Math.round(100 * (shownMode === "performance" && (!state || state.config.lend) ? b.rest_share_lent : b.rest_share_held)) + "%." : "";
   const stamp = Number.isFinite(r.measured_at) ? new Date(r.measured_at * 1000).toLocaleString() : "this session";
   $("bench-note").textContent = "Measured " + stamp + " · " + r.cores + " threads · " + r.burners + " background workers" +
     (r.version ? " · Spry " + r.version : "") + (r.saved === false ? " · not saved" : "");
@@ -810,7 +850,7 @@ function go(view) {
   for (const b of document.querySelectorAll(".nav button")) b.classList.toggle("active", b.dataset.go === view);
   if (location.hash.slice(1) !== view) history.replaceState(null, "", "#" + view);
   window.scrollTo(0, 0);
-  if (state && state.config.resource_saver) render(state, false);
+  if (state && state.config.mode !== "performance") render(state, false);
   if (view === "overview") paintTrend();
 }
 for (const b of document.querySelectorAll(".nav button")) b.onclick = () => go(b.dataset.go);
@@ -843,7 +883,7 @@ async function poll() {
   if (document.hidden) return;
   await refresh();
   if (id !== pollId || document.hidden) return;
-  const saving = state?.enabled && state?.config?.resource_saver && !state?.off_reference?.recording;
+  const saving = state?.enabled && state?.config?.mode !== "performance" && !state?.off_reference?.recording;
   timer = setTimeout(poll, saving ? 4000 : 2000);
 }
 document.addEventListener("visibilitychange", poll);

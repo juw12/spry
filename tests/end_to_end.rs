@@ -110,6 +110,21 @@ fn http(port: u16, method: &str, path: &str) -> Option<(u16, String)> {
     Some((head.split_whitespace().nth(1)?.parse().ok()?, body.to_string()))
 }
 
+/// (status code, body) of a POST that carries a body, such as new settings.
+fn send(port: u16, path: &str, body: &str) -> Option<(u16, String)> {
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).ok()?;
+    stream.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
+    let request = format!(
+        "POST {path} HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    );
+    stream.write_all(request.as_bytes()).ok()?;
+    let mut reply = String::new();
+    stream.read_to_string(&mut reply).ok()?;
+    let (head, body) = reply.split_once("\r\n\r\n")?;
+    Some((head.split_whitespace().nth(1)?.parse().ok()?, body.to_string()))
+}
+
 /// (status code, content type, size of the body) of a GET whose body need not be text.
 fn fetch(port: u16, path: &str) -> Option<(u16, String, usize)> {
     let mut stream = TcpStream::connect(("127.0.0.1", port)).ok()?;
@@ -195,7 +210,8 @@ fn eases_shows_restores_and_rescues() {
     // so the test also works on a machine without a screen.
     let busy_exe = home.join(format!("{BUSY_NAME}{}", std::env::consts::EXE_SUFFIX));
     std::fs::copy(SPRY, &busy_exe).unwrap();
-    std::fs::write(home.join("config.json"), format!(r#"{{"always_slow":["{BUSY_NAME}"]}}"#)).unwrap();
+    std::fs::write(home.join("config.json"), format!(r#"{{"mode":"performance","always_slow":["{BUSY_NAME}"]}}"#))
+        .unwrap();
     let busy = Orphan::start(&busy_exe);
     let pid = busy.0;
     let before = platform::read_level(pid).expect("read the starting state");
@@ -281,7 +297,8 @@ fn lends_while_the_front_app_rests_and_holds_again_when_it_works() {
     let _ = std::fs::remove_dir_all(&home);
     std::fs::create_dir_all(&home).unwrap();
     let port = TcpListener::bind(("127.0.0.1", 0)).unwrap().local_addr().unwrap().port();
-    std::fs::write(home.join("config.json"), "{}").unwrap();
+    // Performance mode first: it is the one that lends. Saver mode is tried at the end.
+    std::fs::write(home.join("config.json"), r#"{"mode":"performance"}"#).unwrap();
 
     // One busy app in front, and enough busy apps behind it to fill every processor thread.
     let copy = |name: &str| {
@@ -373,7 +390,31 @@ fn lends_while_the_front_app_rests_and_holds_again_when_it_works() {
     // Spry's own report is renewed every two seconds, so only the system's answer is timed.
     assert!(!shows || back < limit, "the hold took {} ms to come back, the limit is 3000", back.as_millis());
 
-    // 4. Quitting puts everything back exactly.
+    // 4. Saver mode, the default: the same rest, and this time nothing is lent. That is the saving:
+    //    the busy apps behind stay held for as long as they are in the background.
+    let saver = r#"{"mode":"saver"}"#;
+    assert_eq!(send(port, &format!("/api/config?t={token}"), saver).map(|r| r.0), Some(200), "Saver mode is set");
+    wait_until("Spry reports Saver mode", 15, || {
+        http(port, "GET", &format!("/api/status?t={token}")).is_some_and(|(_, body)| body.contains(r#""mode":"saver""#))
+    });
+    platform::suspend(front.0).expect("the app in front stops working");
+    let rested = Instant::now();
+    // Twice as long as it takes Performance mode to lend, with a full reading in between.
+    while rested.elapsed() < Duration::from_secs(13) {
+        for b in &before {
+            let level = level_of(&token, b.0);
+            assert_ne!(level.as_deref(), Some("lent"), "Saver mode lent the idle time\n{}", report());
+        }
+        sleep(Duration::from_millis(500));
+    }
+    assert!(
+        before.iter().all(|b| level_of(&token, b.0).as_deref() == Some("ease") && (!shows || held(b))),
+        "after 13 s of rest every busy app is still held in Saver mode\n{}",
+        report()
+    );
+    platform::resume(front.0).expect("the app in front works again");
+
+    // 5. Quitting puts everything back exactly.
     assert_eq!(http(port, "POST", &format!("/api/quit?t={token}")).map(|r| r.0), Some(200));
     wait_until("spry has quit", 15, || running.0.try_wait().ok().flatten().is_some());
     for (pid, level, open) in &before {

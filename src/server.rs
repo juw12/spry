@@ -164,7 +164,9 @@ fn handle(mut request: Request, shared: &Shared) {
         "/api/bench" if post => compare(),
         "/api/bench" if *request.method() == Method::Get => {
             let path = crate::config::data_dir().join("last-measurement.json");
-            let report = std::fs::read_to_string(path).ok().and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok());
+            let report = std::fs::read_to_string(path)
+                .ok()
+                .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok());
             (200, JSON, report.map(|data| data.to_string()).unwrap_or_else(|| "null".into()))
         }
         _ => (404, "text/plain", "not found".into()),
