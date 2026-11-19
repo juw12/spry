@@ -1,6 +1,6 @@
 [package]
 name = "spry"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2024"
 description = "Keeps an old computer quick: holds back background apps so the one you are using gets the machine."
 license = "MIT"
@@ -28,6 +28,7 @@ objc2-foundation = { version = "0.3.2", default-features = false, features = ["s
 [target.'cfg(any(windows, target_os = "macos"))'.dependencies]
 tao = "0.37.3"
 tray-icon = "0.26.1"
+wry = { version = "0.57.3", default-features = false }
 
 [target."cfg(windows)".dependencies]
 windows-sys = { version = "0.61.2", features = [

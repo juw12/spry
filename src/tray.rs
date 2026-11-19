@@ -1,7 +1,10 @@
-//! The tray (Windows) or menu-bar (macOS) icon.
+//! The tray (Windows) or menu-bar (macOS) icon. It also looks after Spry's window, which is a
+//! process of its own (window.rs): it starts it, brings it to the front, and closes it when Spry quits.
 
 use crate::engine::Shared;
-use crate::{platform, server};
+use crate::{platform, server, window};
+use std::io::Write;
+use std::process::{Child, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::thread::JoinHandle;
@@ -19,9 +22,35 @@ fn icon(active: bool) -> Option<Icon> {
     Icon::from_rgba(if active { ICON_ON } else { ICON_OFF }.to_vec(), SIZE, SIZE).ok()
 }
 
-/// Runs the icon on the main thread until Spry quits. `worker` is the engine thread;
-/// it is joined before the process ends so every process gets put back.
-pub fn run(shared: Arc<Shared>, worker: JoinHandle<()>) -> ! {
+/// Starts `spry window`. Its standard input stays open as long as Spry runs: see window.rs.
+fn start_window() -> Option<Child> {
+    let exe = std::env::current_exe().ok()?;
+    platform::command(exe).arg("window").stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().ok()
+}
+
+/// Brings the open window to the front. False when it is gone.
+fn to_front(window: &mut Child) -> bool {
+    matches!(window.try_wait(), Ok(None)) && window.stdin.as_mut().is_some_and(|pipe| writeln!(pipe, "front").is_ok())
+}
+
+/// Ends the window's standard input, which closes it, and does not wait for it for long.
+fn close_window(mut window: Child) {
+    drop(window.stdin.take());
+    let asked = Instant::now();
+    while matches!(window.try_wait(), Ok(None)) {
+        if asked.elapsed() > Duration::from_secs(2) {
+            let _ = window.kill();
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let _ = window.wait();
+}
+
+/// Runs the icon on the main thread until Spry quits. `worker` is the engine thread; it is joined
+/// before the process ends so every process gets put back. `show` opens the window at the start
+/// (a start by hand); at sign-in Spry starts as the icon alone.
+pub fn run(shared: Arc<Shared>, worker: JoinHandle<()>, show: bool) -> ! {
     #[allow(unused_mut)]
     let mut event_loop = EventLoopBuilder::new().build();
     #[cfg(target_os = "macos")]
@@ -39,6 +68,9 @@ pub fn run(shared: Arc<Shared>, worker: JoinHandle<()>) -> ! {
     let mut tray = None;
     let mut worker = Some(worker);
     let mut shown: Option<(usize, bool)> = None;
+    let mut page: Option<Child> = None;
+    shared.window.store(true, Ordering::Relaxed);
+    shared.show.store(show, Ordering::Relaxed);
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(500));
@@ -62,7 +94,7 @@ pub fn run(shared: Arc<Shared>, worker: JoinHandle<()>) -> ! {
 
         while let Ok(event) = MenuEvent::receiver().try_recv() {
             if event.id == *open.id() {
-                platform::open_url(&server::url(&shared.token));
+                shared.show.store(true, Ordering::Relaxed);
             } else if event.id == *pause.id() {
                 let mut until = shared.pause_until.lock().unwrap();
                 *until = if until.is_some() { None } else { Some(Instant::now() + Duration::from_secs(900)) };
@@ -74,7 +106,28 @@ pub fn run(shared: Arc<Shared>, worker: JoinHandle<()>) -> ! {
         while let Ok(event) = tray_icon::TrayIconEvent::receiver().try_recv() {
             use tray_icon::{MouseButton, MouseButtonState, TrayIconEvent};
             if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+                shared.show.store(true, Ordering::Relaxed);
+            }
+        }
+
+        // A window that has ended: closed by its owner, or it could not be made at all.
+        if let Some(code) = page.as_mut().and_then(|window| window.try_wait().ok().flatten()) {
+            page = None;
+            if code.code() == Some(window::NO_WEB_VIEW) && shared.window.swap(false, Ordering::Relaxed) {
+                // No web view on this computer: from now on the page opens in the browser.
                 platform::open_url(&server::url(&shared.token));
+            }
+        }
+        // Someone asked for the window: the icon, a second start, `spry open`, or this start itself.
+        if shared.show.swap(false, Ordering::Relaxed) && !shared.quit.load(Ordering::Relaxed) {
+            if !shared.window.load(Ordering::Relaxed) {
+                platform::open_url(&server::url(&shared.token));
+            } else if !page.as_mut().is_some_and(to_front) {
+                page = start_window();
+                if page.is_none() {
+                    shared.window.store(false, Ordering::Relaxed);
+                    platform::open_url(&server::url(&shared.token));
+                }
             }
         }
 
@@ -98,6 +151,10 @@ pub fn run(shared: Arc<Shared>, worker: JoinHandle<()>) -> ! {
 
         let engine_gone = worker.as_ref().is_some_and(|w| w.is_finished());
         if shared.quit.load(Ordering::Relaxed) || engine_gone {
+            // The window closes with Spry: its standard input ends here.
+            if let Some(window) = page.take() {
+                close_window(window);
+            }
             tray = None;
             *control_flow = ControlFlow::Exit;
         }

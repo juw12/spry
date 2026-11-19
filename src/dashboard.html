@@ -6,164 +6,295 @@
 <meta name="referrer" content="no-referrer">
 <title>Spry</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='4' y='4' width='92' height='92' rx='22' fill='%23177a4e'/%3E%3Cg fill='none' stroke='%23fff' stroke-width='10.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M27 28l22 22-22 22' opacity='.6'/%3E%3Cpath d='M50 28l22 22-22 22'/%3E%3C/g%3E%3C/svg%3E">
+<script>
+// Before anything is drawn, so a dark screen never flashes light.
+try {
+  var t = localStorage.getItem("spry-theme");
+  document.documentElement.dataset.theme = t || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+} catch (e) { document.documentElement.dataset.theme = "light"; }
+</script>
 <style>
+/* The look is Cairn's: a well-kept field notebook. Warm paper, ink type, a serif voice for headings,
+   hairline rules instead of boxes, and one signal colour used sparingly (Spry's green). */
+@font-face { font-family: "Instrument Serif"; src: url("/fonts/instrument-serif.woff2?t=__TOKEN__") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Geist"; src: url("/fonts/geist.woff2?t=__TOKEN__") format("woff2"); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: "Geist Mono"; src: url("/fonts/geist-mono.woff2?t=__TOKEN__") format("woff2"); font-weight: 400 600; font-display: swap; }
 :root {
-  --paper: #f6f5f1; --card: #ffffff; --ink: #1b1f1d; --soft: #5c6460; --line: #dedcd3;
-  --green: #177a4e; --green-soft: #e2f0e8; --amber: #9a5b00; --amber-soft: #fbedd2;
-  --blue: #1d5fa8; --blue-soft: #e1ecf8; --red: #a3302a; --track: #e8e6de;
+  --bg: #f4f1ea; --surface: #fffdf8; --sunken: #ebe6db; --line: #e1dbcf; --line-strong: #cbc3b3;
+  --ink: #1b1a17; --ink-2: #4a463e; --muted: #6c665d;
+  --accent: #177a4e; --accent-soft: #dcece2; --amber: #855810; --amber-soft: #f4e8cf;
+  --blue: #2f5b8c; --blue-soft: #dfe7f1; --danger: #b3261e; --danger-soft: #f6dedb;
+  --sidebar: 232px;
+  --display: "Instrument Serif", "Iowan Old Style", Georgia, serif;
+  --font: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: "Geist Mono", ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  color-scheme: light;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #131614; --card: #1c201e; --ink: #e9ece9; --soft: #9aa39e; --line: #2e3431;
-    --green: #4fbf8b; --green-soft: #17322a; --amber: #e2a94f; --amber-soft: #3a2c12;
-    --blue: #7db4ee; --blue-soft: #17293d; --red: #ee8a82; --track: #2a302d;
-  }
+:root[data-theme="dark"] {
+  --bg: #151412; --surface: #1c1b18; --sunken: #191816; --line: #2e2c28; --line-strong: #403d37;
+  --ink: #efebe3; --ink-2: #c8c2b6; --muted: #968f83;
+  --accent: #4fbf8b; --accent-soft: #17322a; --amber: #e2a94d; --amber-soft: #33281a;
+  --blue: #86aee0; --blue-soft: #1d2836; --danger: #f2867d; --danger-soft: #3a1c19;
+  color-scheme: dark;
 }
 * { box-sizing: border-box; }
+html, body { height: 100%; }
 body {
-  margin: 0; background: var(--paper); color: var(--ink);
-  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: var(--font); font-size: 14px; line-height: 1.5;
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; overflow-x: hidden;
 }
-main { max-width: 980px; margin: 0 auto; padding: 20px 20px 56px; }
-header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
-header svg { width: 34px; height: 34px; flex: none; }
-h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
-h2 { font-size: 15px; margin: 0 0 4px; }
+button, input, select { font: inherit; color: inherit; }
 p { margin: 0; }
-.sub { color: var(--soft); font-size: 13.5px; }
+a { color: var(--ink); text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+a:hover { text-decoration-color: var(--accent); }
 .grow { flex: 1; }
-.pill {
-  display: inline-flex; align-items: center; gap: 7px; padding: 4px 11px; border-radius: 999px;
-  background: var(--green-soft); color: var(--green); font-weight: 600; font-size: 13.5px;
+.sub { color: var(--muted); font-size: 13px; }
+
+/* ---------------------------------------------------------------- shell */
+.app { display: grid; grid-template-columns: var(--sidebar) minmax(0, 1fr); min-height: 100vh; }
+.sidebar {
+  position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 4px;
+  padding: 20px 14px 16px; border-right: 1px solid var(--line); overflow-y: auto; background: var(--bg);
 }
-.pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
-.pill.off { background: var(--track); color: var(--soft); }
-.pill.warn { background: var(--amber-soft); color: var(--amber); }
+.brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 18px; font-family: var(--display); font-size: 24px; line-height: 1; letter-spacing: -0.01em; }
+.brand svg { width: 26px; height: 26px; flex: none; }
+.state-chip {
+  display: flex; flex-direction: column; gap: 2px; padding: 10px 10px 11px; margin-bottom: 10px;
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
+.state-chip strong { font-size: 13.5px; font-weight: 600; }
+.state-chip span { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav { display: flex; flex-direction: column; gap: 1px; }
+.nav-label { margin: 16px 10px 6px; font-family: var(--mono); font-size: 12px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.nav button {
+  position: relative; display: flex; align-items: center; gap: 10px; width: 100%; height: auto;
+  padding: 6px 10px; border: 0; border-radius: 5px; background: transparent;
+  color: var(--ink-2); font-weight: 450; text-align: left; justify-content: flex-start; cursor: pointer;
+}
+.nav button svg { width: 16px; height: 16px; flex: none; color: var(--muted); }
+.nav button:hover { color: var(--ink); background: color-mix(in srgb, var(--sunken) 70%, transparent); border-color: transparent; }
+.nav button.active { color: var(--ink); font-weight: 600; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.nav button.active::before { content: ""; position: absolute; left: -14px; top: 7px; bottom: 7px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent); }
+.nav button.active svg { color: var(--ink); }
+.nav .count { margin-left: auto; font-family: var(--mono); font-size: 12px; font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
+.sidebar-foot { margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding-top: 14px; }
+.foot-row { display: flex; gap: 4px; flex-wrap: wrap; }
+.foot-note { padding: 0 10px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.main { min-width: 0; display: flex; flex-direction: column; }
+.topbar {
+  position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 14px 40px; border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 90%, transparent); backdrop-filter: blur(8px);
+}
+.view { padding: 40px 40px 80px; max-width: 1040px; width: 100%; }
+.view[hidden] { display: none; }
+
+/* ---------------------------------------------------------------- controls */
 button, select {
-  font: inherit; color: var(--ink); background: var(--card); border: 1px solid var(--line);
-  border-radius: 7px; padding: 6px 12px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 14px;
+  border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface); color: var(--ink);
+  font-weight: 500; white-space: nowrap; cursor: pointer;
+  transition: background .12s, border-color .12s, transform .08s;
 }
-button:hover, select:hover { border-color: var(--soft); }
-button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
-button.main { background: var(--green); border-color: var(--green); color: #fff; font-weight: 600; }
-@media (prefers-color-scheme: dark) { button.main { color: #0d1a14; } }
-button:disabled { opacity: .55; cursor: default; }
-section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin-top: 14px; }
-.head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
-.meters { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-.meter { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
-.meter .label { color: var(--soft); font-size: 13px; }
-.meter .value { font-size: 24px; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
-.meter .value small { font-size: 13px; font-weight: 400; color: var(--soft); letter-spacing: 0; }
-.bar { height: 6px; border-radius: 3px; background: var(--track); overflow: hidden; margin-top: 8px; }
-.bar i { display: block; height: 100%; width: 0; background: var(--green); border-radius: 3px; transition: width .4s; }
+select { padding: 0 8px; font-weight: 450; max-width: 100%; }
+td select { height: 30px; font-size: 13.5px; }
+button:hover, select:hover { border-color: var(--ink-2); }
+button:active { transform: translateY(1px); }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.main { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+button.main:hover { background: color-mix(in srgb, var(--ink) 86%, var(--accent)); }
+.ghost { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--ink-2); font-size: 12.5px; font-weight: 500; text-decoration: none; cursor: pointer; }
+.ghost:hover { background: var(--sunken); color: var(--ink); border-color: transparent; }
+.ghost svg { width: 14px; height: 14px; }
+button.more { height: 28px; padding: 0 10px; font-size: 12.5px; margin-top: 14px; }
+button:disabled { opacity: .45; cursor: default; }
+.pill {
+  display: inline-flex; align-items: center; gap: 8px; height: 26px; padding: 0 10px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-weight: 500; font-size: 13px;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
+.pill.off { color: var(--muted); }
+.pill.off::before { background: var(--line-strong); }
+.pill.warn::before { background: var(--amber); }
+
+/* ---------------------------------------------------------------- type & page */
+.page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin-bottom: 28px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+.page-head h1 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 44px; line-height: 1; letter-spacing: -0.015em; }
+.page-head p { margin: 10px 0 0; color: var(--ink-2); max-width: 620px; font-size: 14.5px; text-wrap: pretty; }
+.section-title { margin: 36px 0 6px; font-family: var(--mono); font-size: 12px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.section-title + .sub { margin-bottom: 12px; font-size: 14px; color: var(--ink-2); }
+.meters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
+.meter { padding: 0 20px 20px 0; min-width: 0; }
+.meter .label { font-family: var(--mono); font-size: 12px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.meter .value { margin-top: 4px; font-family: var(--display); font-size: 40px; line-height: 1.05; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.meter .value small { font-family: var(--font); font-size: 13px; color: var(--muted); letter-spacing: 0; }
+.meter .sub { margin-top: 10px; }
+.bar { height: 3px; border-radius: 2px; background: var(--sunken); overflow: hidden; margin-top: 12px; }
+.bar i { display: block; height: 100%; width: 0; background: var(--ink); border-radius: 2px; transition: width .4s; }
 .bar i.high { background: var(--amber); }
-.notice { margin-top: 14px; padding: 10px 14px; border-radius: 8px; background: var(--amber-soft); color: var(--amber); font-size: 14px; }
-.notice a { color: inherit; font-weight: 600; }
+.notices { padding: 0 40px; max-width: 1040px; }
+.notice { margin-top: 18px; padding: 10px 14px; border-left: 3px solid var(--amber); background: var(--amber-soft); color: var(--ink); font-size: 14px; border-radius: 0 6px 6px 0; }
+.notice a { font-weight: 600; }
+
+/* ---------------------------------------------------------------- tables & rows */
 table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-th { text-align: left; font-weight: 500; color: var(--soft); font-size: 13px; padding: 4px 8px 6px 0; border-bottom: 1px solid var(--line); }
-td { padding: 7px 8px 7px 0; border-bottom: 1px solid var(--line); vertical-align: middle; }
-tr:last-child td { border-bottom: 0; }
+th { text-align: left; font-family: var(--mono); font-weight: 500; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); padding: 6px 12px 8px 0; border-bottom: 1px solid var(--ink); white-space: nowrap; }
+td { padding: 9px 12px 9px 0; border-bottom: 1px solid var(--line); vertical-align: middle; }
 .num { text-align: right; white-space: nowrap; }
-th.num { padding-right: 8px; }
-.name { min-width: 7em; }
-.name div { display: flex; gap: 4px; max-width: 24em; }
+td.num { font-family: var(--mono); font-size: 13px; }
+.name { min-width: 7em; font-weight: 500; }
+.name div { display: flex; gap: 5px; max-width: 24em; }
 .name .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.name .ct { flex: none; color: var(--soft); }
-.more { margin-top: 10px; font-size: 13px; padding: 3px 9px; }
-.chip { display: inline-block; padding: 1px 8px; border-radius: 5px; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
-.chip.front { background: var(--green-soft); color: var(--green); }
+.name .ct { flex: none; color: var(--muted); font-family: var(--mono); font-size: 12px; font-weight: 400; align-self: center; }
+.chip { display: inline-flex; align-items: center; height: 19px; padding: 0 6px; border-radius: 4px; font-family: var(--mono); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.chip.front { background: var(--accent-soft); color: var(--accent); }
 .chip.ease { background: var(--blue-soft); color: var(--blue); }
-.chip.lent { color: var(--soft); box-shadow: inset 0 0 0 1px var(--line); }
+.chip.lent { color: var(--muted); box-shadow: inset 0 0 0 1px var(--line-strong); }
 .chip.pulse { background: var(--amber-soft); color: var(--amber); }
-.chip.freeze { background: var(--track); color: var(--ink); }
-.empty { color: var(--soft); padding: 6px 0; }
-.row { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
-.row:last-of-type { border-bottom: 0; }
-.row input { margin-top: 4px; width: 16px; height: 16px; accent-color: var(--green); flex: none; }
-.row label { flex: 1; cursor: pointer; }
-.row .size { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
-.actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
-.result { margin-top: 10px; font-weight: 600; }
-.error { color: var(--red); }
-footer { margin-top: 18px; color: var(--soft); font-size: 13px; display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
-footer button { font-size: 13px; padding: 3px 9px; }
+.chip.freeze { background: var(--sunken); color: var(--ink); }
+.empty { color: var(--muted); padding: 10px 0; }
+.row { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.row input { margin-top: 3px; width: 16px; height: 16px; accent-color: var(--ink); flex: none; }
+.row label { flex: 1; cursor: pointer; font-weight: 500; }
+.row label .sub { font-weight: 400; }
+.row .size { font-family: var(--mono); font-size: 13px; white-space: nowrap; }
+.actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+.result { margin-top: 18px; font-family: var(--display); font-size: 24px; line-height: 1.2; text-wrap: pretty; }
+.result:empty { display: none; }
+.result + .sub { margin-top: 8px; max-width: 640px; }
+.error { color: var(--danger); }
+.fine { margin-top: 14px; color: var(--ink-2); font-size: 13.5px; max-width: 680px; }
+.fine strong { color: var(--ink); font-weight: 600; }
 .scroll { overflow-x: auto; }
-@media (max-width: 760px) {
-  .meters { grid-template-columns: repeat(2, 1fr); }
+.ask { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 20px; background: color-mix(in srgb, var(--ink) 28%, transparent); }
+.ask[hidden] { display: none; }
+.ask-box { width: 100%; max-width: 420px; padding: 22px 22px 18px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: 0 30px 70px -20px rgba(27, 26, 23, .35); }
+.ask-box p { font-family: var(--display); font-size: 24px; line-height: 1.2; text-wrap: pretty; }
+
+@media (max-width: 900px) {
+  .app { display: block; }
+  .sidebar { position: static; height: auto; flex-direction: row; align-items: center; gap: 10px; padding: 10px 14px; border-right: 0; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+  .sidebar::-webkit-scrollbar { display: none; }
+  .brand { padding: 0 4px 0 0; font-size: 22px; }
+  .state-chip, .nav-label, .sidebar-foot, .nav .count { display: none; }
+  .nav { flex-direction: row; gap: 2px; }
+  .nav button { width: auto; white-space: nowrap; padding: 6px 9px; }
+  .nav button.active::before { left: 9px; right: 9px; top: auto; bottom: -1px; width: auto; height: 2px; border-radius: 2px; }
+  .topbar { position: static; padding: 10px 16px; }
+  .view { padding: 24px 16px 56px; }
+  .notices { padding: 0 16px; }
+  .page-head h1 { font-size: 36px; }
+  .meters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .meter { padding-bottom: 18px; }
+  .meter .value { font-size: 32px; }
   .hide-narrow { display: none; }
-  main { padding: 14px 12px 40px; }
-  section { padding: 14px; }
-  select { max-width: 100px; padding-left: 6px; padding-right: 2px; }
-  td, th { padding-right: 6px; }
+  select { max-width: 108px; padding: 0 2px 0 6px; }
+  td, th { padding-right: 8px; }
   /* The name takes the room the other columns leave, so the rule stays in view. */
   .name { min-width: 5.5em; width: 100%; max-width: 0; }
   .name div { max-width: none; }
   .name .ct { display: none; }
 }
-@media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .bar i, button { transition: none; } }
 </style>
 </head>
 <body>
-<main>
-  <header>
-    <svg viewBox="0 0 100 100" aria-hidden="true"><rect x="4" y="4" width="92" height="92" rx="22" fill="#177a4e"/><g fill="none" stroke="#fff" stroke-width="10.5" stroke-linecap="round" stroke-linejoin="round"><path d="M27 28l22 22-22 22" opacity=".6"/><path d="M50 28l22 22-22 22"/></g></svg>
-    <h1>Spry</h1>
-    <span id="pill" class="pill off" role="status">Starting</span>
-    <span class="grow"></span>
-    <button id="pause">Pause 15 minutes</button>
-    <button id="power">Switch off</button>
-  </header>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <svg viewBox="0 0 100 100" aria-hidden="true"><rect x="4" y="4" width="92" height="92" rx="22" fill="#177a4e"/><g fill="none" stroke="#fff" stroke-width="10.5" stroke-linecap="round" stroke-linejoin="round"><path d="M27 28l22 22-22 22" opacity=".6"/><path d="M50 28l22 22-22 22"/></g></svg>
+      <span>Spry</span>
+    </div>
+    <div class="state-chip"><strong id="side-state">Starting</strong><span id="side-front">&nbsp;</span></div>
+    <nav class="nav" aria-label="Pages">
+      <div class="nav-label">Right now</div>
+      <button data-go="overview" class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Overview<span class="count" id="n-held"></span></button>
+      <button data-go="apps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Apps<span class="count" id="n-apps"></span></button>
+      <div class="nav-label">Look after</div>
+      <button data-go="storage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12H2"/><path d="M5.5 5h13l3.5 7v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6z"/><path d="M6 16h.01M10 16h.01"/></svg>Storage</button>
+      <button data-go="measure"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg>Measure</button>
+      <div class="nav-label">Spry</div>
+      <button data-go="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>Settings</button>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="foot-row">
+        <button class="ghost" id="theme" title="Switch between light and dark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.800A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.800z"/></svg><span id="theme-text">Dark</span></button>
+        <a class="ghost" href="https://github.com/juw12/spry" target="_blank" rel="noopener" title="Spry on GitHub"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.500c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.200s-1.1-.3-3.5 1.300a12.3 12.3 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.100a4.2 4.2 0 0 0-.1 3.200A4.6 4.6 0 0 0 4 9.500c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>GitHub</a>
+      </div>
+      <span class="foot-note" id="version"></span>
+    </div>
+  </aside>
 
-  <div class="meters">
-    <div class="meter"><div class="label">Processor in use</div><div class="value" id="cpu">–</div><div class="bar"><i id="cpu-bar"></i></div></div>
-    <div class="meter"><div class="label">Memory in use</div><div class="value" id="mem">–</div><div class="bar"><i id="mem-bar"></i></div></div>
-    <div class="meter"><div class="label">Disk space</div><div class="value" id="disk">–</div><div class="bar"><i id="disk-bar"></i></div></div>
-    <div class="meter"><div class="label">Spry itself</div><div class="value" id="self">–</div><div class="sub" id="self-sub">&nbsp;</div></div>
+  <div class="main">
+    <div class="topbar">
+      <span id="pill" class="pill off" role="status">Starting</span>
+      <span class="grow"></span>
+      <button id="pause">Pause 15 minutes</button>
+      <button id="power">Switch off</button>
+    </div>
+
+    <div class="notices">
+      <div id="update" class="notice" hidden></div>
+      <div id="rules-only" class="notice" hidden>This desktop does not tell Spry which app is in front (Wayland). Spry only follows the rules you set under Apps: “Always slow” still works; automatic easing and freezing stay off.</div>
+      <div id="lost" class="notice" hidden>Spry stopped. Every app is back at full speed. Start Spry again to continue.</div>
+    </div>
+
+    <section class="view" data-view="overview">
+      <div class="page-head"><div><h1>Overview</h1><p>Spry holds back busy apps in the background so the app in front gets the processor. Everything is put back when Spry is paused, switched off or quit.</p></div></div>
+      <div class="meters">
+        <div class="meter"><div class="label">Processor in use</div><div class="value" id="cpu">–</div><div class="bar"><i id="cpu-bar"></i></div></div>
+        <div class="meter"><div class="label">Memory in use</div><div class="value" id="mem">–</div><div class="bar"><i id="mem-bar"></i></div></div>
+        <div class="meter"><div class="label">Disk space</div><div class="value" id="disk">–</div><div class="bar"><i id="disk-bar"></i></div></div>
+        <div class="meter"><div class="label">Spry itself</div><div class="value" id="self">–</div><div class="sub" id="self-sub">&nbsp;</div></div>
+      </div>
+
+
+      <h2 class="section-title">Held back right now</h2>
+      <p class="sub" id="held-sub"></p>
+      <div class="scroll"><table id="held"></table></div>
+    </section>
+
+    <section class="view" data-view="apps" hidden>
+      <div class="page-head"><div><h1>Apps</h1><p>Spry decides by itself. Set a rule only where you want something else. Calls, music, recording and the system are never touched.</p></div></div>
+      <div class="scroll"><table id="apps"></table></div>
+      <p class="empty" id="apps-none" hidden>No app is busy right now.</p>
+      <button class="more" id="apps-more" hidden></button>
+    </section>
+
+    <section class="view" data-view="storage" hidden>
+      <div class="page-head"><div><h1>Storage</h1><p>Finds caches, temporary files and the bin. Documents, downloads and app data are never touched. Nothing is removed until you choose.</p></div></div>
+      <div id="storage"></div>
+      <div class="actions"><button id="scan">Look for space</button><button id="clear" class="main" hidden>Clear selected</button><span class="sub" id="storage-note"></span></div>
+    </section>
+
+    <section class="view" data-view="measure" hidden>
+      <div class="page-head"><div><h1>Measure</h1><p>Starts busy background processes for under a minute, then compares the app in front with Spry off and on, and shows what that costs the apps that are held. The busy processes are removed afterwards.</p></div></div>
+      <div class="scroll"><table id="bench"></table></div>
+      <p class="result" id="bench-result"></p>
+      <p class="sub" id="bench-cost"></p>
+      <div class="actions"><button id="measure">Measure now</button><span class="sub" id="bench-note"></span></div>
+    </section>
+
+    <section class="view" data-view="settings" hidden>
+      <div class="page-head"><div><h1>Settings</h1><p id="counts"></p></div><div class="actions"><button id="quit">Quit Spry</button></div></div>
+      <div class="row"><input type="checkbox" id="autostart"><label for="autostart">Start Spry when I sign in</label></div>
+      <div class="row"><input type="checkbox" id="strong"><label for="strong">Strong mode<br><span class="sub">When the whole processor is busy, also pause the heaviest background processes in short pulses (120 ms paused, 80 ms running). They take longer to finish.</span></label></div>
+      <div class="row"><input type="checkbox" id="lend"><label for="lend">Lend idle time<br><span class="sub">While the app in front rests (almost no processor use for 6 seconds), held apps run at full speed. The hold is back when it works again. Apps with the rule “Always slow” or “Freeze” stay held.</span></label></div>
+      <div class="row" id="trim-row" hidden><input type="checkbox" id="trim"><label for="trim">Give memory back when it runs low<br><span class="sub">Asks large background apps to release memory they are not using. They may load a moment longer when you return to them.</span></label></div>
+      <p class="fine"><strong>How Spry holds an app back on this system:</strong> <span id="ease-text"></span>. The app in front is never touched. Everything is put back when Spry is paused, switched off or quit.</p>
+      <p class="fine"><strong>What Spry cannot do:</strong> it does not add memory or make the processor faster. It decides who goes first: while the app in front works, the apps behind it wait and take longer. While it rests, they get the processor back.</p>
+    </section>
   </div>
+</div>
 
-  <div id="update" class="notice" hidden></div>
-  <div id="rules-only" class="notice" hidden>This desktop does not tell Spry which app is in front (Wayland). Spry only follows the rules you set under Apps: “Always slow” still works; automatic easing and freezing stay off.</div>
-  <div id="lost" class="notice" hidden>Spry stopped. Every app is back at full speed. Start Spry again to continue.</div>
-
-  <section>
-    <div class="head"><div class="grow"><h2>Held back right now</h2><p class="sub" id="held-sub"></p></div></div>
-    <div class="scroll"><table id="held"></table></div>
-  </section>
-
-  <section>
-    <div class="head"><div class="grow"><h2>Apps</h2><p class="sub">Spry decides by itself. Set a rule only where you want something else. Calls, music, recording and the system are never touched.</p></div></div>
-    <div class="scroll"><table id="apps"></table></div>
-    <p class="empty" id="apps-none" hidden>No app is busy right now.</p>
-    <button class="more" id="apps-more" hidden></button>
-  </section>
-
-  <section>
-    <div class="head"><div class="grow"><h2>Storage</h2><p class="sub">Finds caches, temporary files and the bin. Documents, downloads and app data are never touched. Nothing is removed until you choose.</p></div></div>
-    <div id="storage"></div>
-    <div class="actions"><button id="scan">Look for space</button><button id="clear" class="main" hidden>Clear selected</button><span class="sub" id="storage-note"></span></div>
-  </section>
-
-  <section>
-    <div class="head"><div class="grow"><h2>Measure on this computer</h2><p class="sub">Starts busy background processes for under a minute, then compares the app in front with Spry off and on, and shows what that costs the apps that are held. The busy processes are removed afterwards.</p></div></div>
-    <div class="scroll"><table id="bench"></table></div>
-    <p class="result" id="bench-result"></p>
-    <p class="sub" id="bench-cost"></p>
-    <div class="actions"><button id="measure">Measure now</button><span class="sub" id="bench-note"></span></div>
-  </section>
-
-  <section>
-    <div class="head"><div class="grow"><h2>Settings</h2></div></div>
-    <div class="row"><input type="checkbox" id="autostart"><label for="autostart">Start Spry when I sign in</label></div>
-    <div class="row"><input type="checkbox" id="strong"><label for="strong">Strong mode<br><span class="sub">When the whole processor is busy, also pause the heaviest background processes in short pulses (120 ms paused, 80 ms running). They take longer to finish.</span></label></div>
-    <div class="row"><input type="checkbox" id="lend"><label for="lend">Lend idle time<br><span class="sub">While the app in front rests (almost no processor use for 6 seconds), held apps run at full speed. The hold is back when it works again. Apps with the rule “Always slow” or “Freeze” stay held.</span></label></div>
-    <div class="row" id="trim-row" hidden><input type="checkbox" id="trim"><label for="trim">Give memory back when it runs low<br><span class="sub">Asks large background apps to release memory they are not using. They may load a moment longer when you return to them.</span></label></div>
-    <p class="sub" style="margin-top:12px"><strong>How Spry holds an app back on this system:</strong> <span id="ease-text"></span>. The app in front is never touched. Everything is put back when Spry is paused, switched off or quit.</p>
-    <p class="sub" style="margin-top:8px"><strong>What Spry cannot do:</strong> it does not add memory or make the processor faster. It decides who goes first: while the app in front works, the apps behind it wait and take longer. While it rests, they get the processor back.</p>
-  </section>
-
-  <footer><span id="version"></span><span id="counts"></span><span class="grow"></span><button id="quit">Quit Spry</button></footer>
-</main>
+<div id="ask" class="ask" role="dialog" aria-modal="true" aria-labelledby="ask-text" hidden>
+  <div class="ask-box">
+    <p id="ask-text"></p>
+    <div class="actions"><span class="grow"></span><button id="ask-no">Cancel</button><button id="ask-yes" class="main"></button></div>
+  </div>
+</div>
 
 <script>
 "use strict";
@@ -234,6 +365,11 @@ function render(s) {
   else if (paused) { pill.className = "pill warn"; pill.textContent = "Paused, back in " + clock(s.paused_secs); }
   else if (!s.fg_known) { pill.className = "pill warn"; pill.textContent = "On, rules only"; }
   else { pill.className = "pill"; pill.textContent = "On" + (s.fg ? ", " + s.fg + " is in front" : ""); }
+  $("side-state").textContent = !s.enabled ? "Switched off" : paused ? "Paused" : "On";
+  $("side-front").textContent = !s.enabled || paused ? "Nothing is held back"
+    : !s.fg_known ? "Rules only" : s.fg ? s.fg + " is in front" : "\u00a0";
+  $("n-held").textContent = s.held.length || "";
+  $("n-apps").textContent = s.apps.length || "";
   $("pause").textContent = paused ? "Resume now" : "Pause 15 minutes";
   $("pause").hidden = !s.enabled;
   $("power").textContent = s.enabled ? "Switch off" : "Switch on";
@@ -367,9 +503,23 @@ $("strong").onchange = e => saveConfig(cfg => { cfg.strong = e.target.checked; }
 $("lend").onchange = e => saveConfig(cfg => { cfg.lend = e.target.checked; });
 $("trim").onchange = e => saveConfig(cfg => { cfg.trim_memory = e.target.checked; });
 $("autostart").onchange = e => api("/api/autostart?on=" + (e.target.checked ? 1 : 0), "POST").then(refresh).catch(showError);
-$("quit").onclick = () => {
-  if (confirm("Quit Spry? Every app goes back to full speed.")) api("/api/quit", "POST").catch(() => {});
-};
+// Asked on the page itself: Spry's own window has none of the browser's question boxes.
+function sure(question, yes) {
+  return new Promise(resolve => {
+    const box = $("ask");
+    const done = answer => { box.hidden = true; resolve(answer); };
+    $("ask-text").textContent = question;
+    $("ask-yes").textContent = yes;
+    $("ask-yes").onclick = () => done(true);
+    $("ask-no").onclick = () => done(false);
+    box.onclick = e => { if (e.target === box) done(false); };
+    box.onkeydown = e => { if (e.key === "Escape") done(false); };
+    box.hidden = false;
+    $("ask-no").focus();
+  });
+}
+$("quit").onclick = () => sure("Quit Spry? Every app goes back to full speed.", "Quit Spry")
+  .then(yes => { if (yes) api("/api/quit", "POST").catch(() => {}); });
 
 function showStorage(list, cleared) {
   const box = $("storage");
@@ -396,10 +546,13 @@ $("scan").onclick = () => {
 };
 $("clear").onclick = () => {
   const ids = [...document.querySelectorAll("#storage input:checked")].map(i => i.value);
-  if (!ids.length || !confirm("Clear the ticked items? This cannot be undone.")) return;
-  $("clear").disabled = true;
-  $("storage-note").textContent = "Clearing…";
-  api("/api/storage?ids=" + ids.join(","), "POST").then(list => showStorage(list, true)).catch(showError).finally(() => { $("clear").disabled = false; });
+  if (!ids.length) return;
+  sure("Clear the ticked items? This cannot be undone.", "Clear them").then(yes => {
+    if (!yes) return;
+    $("clear").disabled = true;
+    $("storage-note").textContent = "Clearing…";
+    api("/api/storage?ids=" + ids.join(","), "POST").then(list => showStorage(list, true)).catch(showError).finally(() => { $("clear").disabled = false; });
+  });
 };
 
 $("measure").onclick = () => {
@@ -430,6 +583,35 @@ $("measure").onclick = () => {
     $("bench-note").textContent = r.cores + " processor threads, " + r.burners + " busy background processes.";
   }).catch(showError).finally(() => { $("measure").disabled = false; $("measure").textContent = "Measure again"; });
 };
+
+// One page at a time, as in the sidebar. The address keeps the page, so a reload stays where you were.
+function go(view) {
+  if (!document.querySelector('.view[data-view="' + view + '"]')) view = "overview";
+  for (const v of document.querySelectorAll(".view")) v.hidden = v.dataset.view !== view;
+  for (const b of document.querySelectorAll(".nav button")) b.classList.toggle("active", b.dataset.go === view);
+  if (location.hash.slice(1) !== view) history.replaceState(null, "", "#" + view);
+  window.scrollTo(0, 0);
+}
+for (const b of document.querySelectorAll(".nav button")) b.onclick = () => go(b.dataset.go);
+window.addEventListener("hashchange", () => go(location.hash.slice(1)));
+go(location.hash.slice(1) || "overview");
+
+// Light or dark: what the system uses, until you choose here.
+const systemDark = window.matchMedia("(prefers-color-scheme: dark)");
+let chosenTheme = null;
+try { chosenTheme = localStorage.getItem("spry-theme"); } catch (e) { /* storage is off: follow the system */ }
+function theme() {
+  const dark = chosenTheme ? chosenTheme === "dark" : systemDark.matches;
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  $("theme-text").textContent = dark ? "Light" : "Dark";
+}
+systemDark.addEventListener("change", theme);
+$("theme").onclick = () => {
+  chosenTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  try { localStorage.setItem("spry-theme", chosenTheme); } catch (e) { /* kept for this visit only */ }
+  theme();
+};
+theme();
 
 refresh();
 setInterval(refresh, 2000);

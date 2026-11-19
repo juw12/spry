@@ -59,8 +59,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir built && cd built
-          gh release download -R juw12/spry --pattern 'spry-*'
-          for file in spry-*.zip spry-*.tar.gz; do
+          gh release download -R juw12/spry --pattern 'spry-*' --pattern 'Spry-*'
+          for file in spry-*.zip spry-*.tar.gz Spry-*.zip; do
+            [ -e "$file" ] || continue  # a release from before 0.4 has no Mac app
             sha256sum "$file" | cut -d' ' -f1 > got
             cut -d' ' -f1 "$file.sha256" > want
             cmp got want

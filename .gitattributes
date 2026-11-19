@@ -2,3 +2,5 @@
 *.ico binary
 *.png binary
 *.rgba binary
+*.woff2 binary
+*.icns binary

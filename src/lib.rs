@@ -11,3 +11,5 @@ pub mod policy;
 pub mod server;
 #[cfg(any(windows, target_os = "macos"))]
 pub mod tray;
+#[cfg(any(windows, target_os = "macos"))]
+pub mod window;
