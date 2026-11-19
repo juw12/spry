@@ -230,33 +230,37 @@ pub fn run(secs: f64, burners: usize) -> std::io::Result<Report> {
     };
 
     // The other side of the trade: the app in front rests now, and the held apps are timed.
-    let rest = || sleep(Duration::from_secs_f64(secs / 2.0));
-    let ((), front_rests_held) = kids.speed_during(rest);
-    let front_rests_pulsed = if cfg!(unix) {
-        let pulse = Pulse::new();
-        pulse.set(pids.clone());
+    // The ways of holding take turns, three rounds, so a machine whose speed drifts (shared
+    // test machines do) cannot favour one of them.
+    const ROUNDS: usize = 3;
+    let rest = || sleep(Duration::from_secs_f64(secs / 4.0));
+    let (mut held, mut pulsed_rest, mut lent, mut off) = (0.0, 0.0, 0.0, 0.0);
+    for _ in 0..ROUNDS {
+        hold(Hold::Deep);
+        held += kids.speed_during(rest).1;
+        if cfg!(unix) {
+            let pulse = Pulse::new();
+            pulse.set(pids.clone());
+            sleep(Duration::from_millis(300));
+            pulsed_rest += kids.speed_during(rest).1;
+        }
+        hold(Hold::Lent);
+        lent += kids.speed_during(rest).1;
+        for (pid, s) in &saved {
+            let _ = platform::restore(*pid, s);
+        }
         sleep(Duration::from_millis(300));
-        let ((), speed) = kids.speed_during(rest);
-        drop(pulse);
-        Some(speed)
-    } else {
-        None
-    };
-    hold(Hold::Lent);
-    let ((), front_rests_lent) = kids.speed_during(rest);
-    for (pid, s) in &saved {
-        let _ = platform::restore(*pid, s);
+        off += kids.speed_during(rest).1;
     }
-    sleep(Duration::from_millis(300));
-    let ((), front_rests_off) = kids.speed_during(rest);
+    let rounds = ROUNDS as f64;
 
     let background = Background {
         front_works_off,
         front_works_held,
-        front_rests_off,
-        front_rests_held,
-        front_rests_pulsed,
-        front_rests_lent,
+        front_rests_off: off / rounds,
+        front_rests_held: held / rounds,
+        front_rests_pulsed: cfg!(unix).then_some(pulsed_rest / rounds),
+        front_rests_lent: lent / rounds,
     };
     Ok(Report {
         os: std::env::consts::OS,

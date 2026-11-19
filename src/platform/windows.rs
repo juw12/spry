@@ -354,7 +354,6 @@ pub fn forget(pid: u32) {
     OURS.lock().unwrap().remove(&pid);
 }
 
-/// A number that shows the current state, for tests: the priority class.
 /// Runs the calling process at normal priority until dropped, if it was started lower.
 pub struct NormalPriority(u32);
 
@@ -399,6 +398,7 @@ pub fn cpu_total() -> Option<f32> {
     (all > 0).then(|| (100.0 * (1.0 - idle as f64 / all as f64)).clamp(0.0, 100.0) as f32)
 }
 
+/// A number that shows the current state, for tests: the priority class.
 pub fn read_level(pid: u32) -> Option<i64> {
     let handle = open(pid, PROCESS_QUERY_LIMITED_INFORMATION).ok()?;
     let class = unsafe { GetPriorityClass(handle.0) };

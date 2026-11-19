@@ -219,6 +219,9 @@ fn eases_shows_restores_and_rescues() {
 #[test]
 fn lends_while_the_front_app_rests_and_holds_again_when_it_works() {
     let _alone = ONE_AT_A_TIME.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    // CI runners on Windows start everything low; with every processor thread busy at normal
+    // priority this test and the Spry it starts would hardly get a turn.
+    let _normal = platform::NormalPriority::hold();
     let home: PathBuf = std::env::temp_dir().join(format!("spry-lend-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&home);
     std::fs::create_dir_all(&home).unwrap();

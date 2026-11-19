@@ -93,6 +93,9 @@ fn start(open: bool, tray: bool) {
         }
         return;
     };
+    // Started low (by a scheduled task, or by a parent that runs low), Spry would wait behind
+    // the very apps it has to hold back and could not answer in time.
+    let _normal = platform::NormalPriority::hold();
     let (cfg, first_run) = Config::load();
     if first_run {
         cfg.save();
