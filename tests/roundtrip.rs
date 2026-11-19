@@ -147,6 +147,8 @@ fn the_main_reading_sees_a_process_stop_completely() {
         snap.procs.iter().find(|p| p.pid == burner.pid()).map(|p| p.cpu_now).expect("the busy process is listed")
     };
     sleep(Duration::from_millis(600));
+    read(); // on Windows the first reading of a process that just appeared is always about 0
+    sleep(Duration::from_millis(600));
     let working = read();
     assert!(working > 20.0, "a busy process must read as working, read {working:.0}% of one core");
 
