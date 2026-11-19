@@ -8,6 +8,7 @@ pub mod engine;
 pub mod install;
 pub mod platform;
 pub mod policy;
+pub mod reference;
 pub mod server;
 #[cfg(any(windows, target_os = "macos"))]
 pub mod tray;

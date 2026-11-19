@@ -177,6 +177,13 @@ td.num { font-family: var(--mono); font-size: 13px; }
 .legend span::before { content: ""; width: 10px; height: 3px; margin-right: 5px; display: inline-block; vertical-align: middle; background: var(--accent); }
 .legend .key-off::before { background: var(--muted); }
 .legend .key-pause::before { background: var(--amber); }
+.legend .key-reference::before { height: 0; background: none; border-top: 2px dashed var(--blue); }
+.key-reference[hidden], #ref-summary[hidden] { display: none; }
+.ref-tools { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 10px; display: flex; gap: 8px 14px; align-items: center; flex-wrap: wrap; }
+.ref-tools button { height: 28px; font-size: 12px; }
+.ref-tools .sub { flex: 1 1 280px; }
+#ref-summary { margin-top: 8px; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+#ref-summary strong { color: var(--ink); }
 .trend-body { display: grid; grid-template-columns: 34px 1fr; column-gap: 7px; margin: 12px 0 6px; }
 .plot-axes { display: flex; flex-direction: column; justify-content: space-between; text-align: right; }
 .trend svg { display: block; width: 100%; min-width: 0; height: 110px; overflow: hidden; }
@@ -279,13 +286,15 @@ td.num { font-family: var(--mono); font-size: 13px; }
 
 
       <div class="trend">
-        <div class="plot-head"><h2>Processor history</h2><div class="legend"><span>On</span><span class="key-off">Off</span><span class="key-pause">Paused</span></div></div>
+        <div class="plot-head"><h2>Processor history</h2><div class="legend"><span>On</span><span class="key-off">Off</span><span class="key-pause">Paused</span><span class="key-reference" id="ref-key" hidden>OFF reference · recorded</span></div></div>
         <div class="trend-body"><div class="plot-axes"><span>100%</span><span>50%</span><span>0%</span></div>
           <svg id="cpu-trend" viewBox="0 0 600 110" preserveAspectRatio="none" role="img" aria-label="Whole-computer CPU usage and Spry state over the past minute">
             <g id="trend-lines"></g>
           </svg>
         </div><div class="chart-foot"><span>60 seconds ago</span><span id="trend-now">Waiting for a reading</span></div>
-        <p class="sub" style="margin-top:8px">Live readings show load, not speedup. <a href="#measure">Compare Off and On →</a></p>
+        <p id="ref-summary" hidden></p>
+        <div class="ref-tools"><button id="record-reference">Record OFF reference</button><span class="sub" id="ref-note">Release holds for one minute to overlay a measured OFF trace. Your settings won’t change.</span></div>
+        <p class="sub" style="margin-top:8px">CPU use is not a speed score. <a href="#measure">Compare foreground performance →</a></p>
       </div>
       <h2 class="section-title">Held back right now</h2>
       <p class="sub" id="held-sub"></p>
@@ -406,7 +415,7 @@ function trendNode(tag, attrs, text) {
 function drawTrend(s) {
   if (!Number.isFinite(s.cpu)) return;
   const time = Date.now();
-  const mode = !s.enabled ? "Off" : s.paused_secs > 0 ? "Paused" : "On";
+  const mode = !s.enabled || s.off_reference?.recording ? "Off" : s.paused_secs > 0 ? "Paused" : "On";
   samples.push({time, value:Math.max(0, Math.min(100, s.cpu)), mode});
   while (samples.length && samples[0].time < time - 60000) samples.shift();
   paintTrend();
@@ -422,6 +431,24 @@ function paintTrend() {
   plot.setAttribute("viewBox", `0 0 ${width} 110`);
   const parts = [];
   for (const y of [4, 43, 82]) parts.push(trendNode("line", {x1:0, x2:range, y1:y, y2:y, stroke:"var(--line)"}));
+  const ref = state?.off_reference?.last;
+  const hasRef = Boolean(ref && ref.points && ref.points.length > 1);
+  $("ref-summary").hidden = !hasRef;
+  $("ref-key").hidden = !hasRef;
+  if (hasRef) {
+    // Align the last recorded OFF sample with now. The dashed trace stays fixed; only measured live values move.
+    const points = ref.points, lastMs = points[points.length - 1][0];
+    const path = points.map(([ms, v], i) => (i ? "L" : "M") + xAt(current.time + ms - lastMs) + " " + yAt(v)).join(" ");
+    const line = trendNode("path", {id:"off-reference-trace", d:path, fill:"none", stroke:"var(--blue)",
+      "stroke-width":2, "stroke-dasharray":"5 4", "vector-effect":"non-scaling-stroke"});
+    line.append(trendNode("title", {}, "Recorded OFF readings, aligned to the same one-minute scale."));
+    parts.push(line);
+    const mean = points.reduce((sum, pair) => sum + pair[1], 0) / points.length;
+    const delta = current.value - mean;
+    const difference = Math.abs(delta) < 0.05 ? "0.0" : (delta > 0 ? "+" : "−") + Math.abs(delta).toFixed(1);
+    $("ref-summary").replaceChildren(el("strong", {textContent:`${current.mode.toUpperCase()} now: ${current.value.toFixed(1)}%`}),
+      `  ·  OFF average: ${mean.toFixed(1)}%  ·  Difference: ${difference} percentage points`);
+  }
   const periods = [];
   let previous = null;
   for (const sample of samples) {
@@ -453,7 +480,25 @@ function paintTrend() {
     }, p.mode.toUpperCase()));
     parts.push(ribbon);
   }
-  const y = yAt(current.value), labelY = Math.max(11, Math.min(74, y));
+  const fitLabel = y => Math.max(11, Math.min(74, y));
+  const y = yAt(current.value);
+  let labelY = fitLabel(y);
+  if (hasRef) {
+    const lastValue = ref.points[ref.points.length - 1][1];
+    const offY = yAt(lastValue);
+    let refY = fitLabel(offY);
+    if (Math.abs(refY - labelY) < 22) {
+      const mid = Math.max(22, Math.min(63, (labelY + refY) / 2));
+      const side = y <= offY ? -1 : 1;
+      labelY = mid + side * 11;
+      refY = mid - side * 11;
+    }
+    parts.push(trendNode("polyline", {points:`${range},${offY} ${range+4},${offY} ${range+9},${refY}`,
+      stroke:"var(--blue)", "stroke-dasharray":"2 2", fill:"none"}),
+      trendNode("rect", {x:range+9, y:refY-10, width:76, height:20, rx:4, stroke:"var(--blue)", fill:"var(--surface)", "stroke-dasharray":"3 2"}),
+      trendNode("text", {id:"trend-off-state", x:range+47, y:refY+3.5, "text-anchor":"middle", fill:"var(--ink)"},
+        `OFF ref ${Math.round(lastValue)}%`));
+  }
   const text = `${current.mode.toUpperCase()} · ${Math.round(current.value)}%`;
   const color = trendColors[current.mode];
   parts.push(trendNode("polyline", {points:`${range},${y} ${range+4},${y} ${range+9},${labelY}`, stroke:color, fill:"none"}),
@@ -468,20 +513,28 @@ window.addEventListener("resize", paintTrend);
 
 function render(s) {
   state = s;
+  const reference = s.off_reference || {};
+  const recording = Boolean(reference.recording);
+  $("record-reference").textContent = recording ? "Cancel recording" : reference.last ? "Refresh OFF reference" : "Record OFF reference";
+  const at = reference.last ? new Date(reference.last.at * 1000).toLocaleString() : "";
+  $("ref-note").textContent = recording ? `Recording OFF · ${reference.left}s left. Normal operation resumes automatically.` :
+    [reference.message, at ? `Dashed line: OFF readings from ${at}, not a prediction of this workload.` :
+      "Release holds for one minute to overlay a measured OFF trace. Your settings won’t change."].filter(Boolean).join(" ");
   drawTrend(s);
   const paused = s.paused_secs > 0;
   const pill = $("pill");
-  if (!s.enabled) { pill.className = "pill off"; pill.textContent = "Switched off"; }
+  if (recording) { pill.className = "pill warn"; pill.textContent = "No holds · recording OFF reference"; }
+  else if (!s.enabled) { pill.className = "pill off"; pill.textContent = "Switched off"; }
   else if (paused) { pill.className = "pill warn"; pill.textContent = "Paused, back in " + clock(s.paused_secs); }
   else if (!s.fg_known) { pill.className = "pill warn"; pill.textContent = "On, rules only"; }
   else { pill.className = "pill"; pill.textContent = "On" + (s.fg ? ", " + s.fg + " is in front" : ""); }
-  $("side-state").textContent = !s.enabled ? "Switched off" : paused ? "Paused" : "On";
-  $("side-front").textContent = !s.enabled || paused ? "Nothing is held back"
+  $("side-state").textContent = recording ? "Recording OFF" : !s.enabled ? "Switched off" : paused ? "Paused" : "On";
+  $("side-front").textContent = recording || !s.enabled || paused ? "Nothing is held back"
     : !s.fg_known ? "Rules only" : s.fg ? s.fg + " is in front" : "\u00a0";
   $("n-held").textContent = s.held.length || "";
   $("n-apps").textContent = s.apps.length || "";
   $("pause").textContent = paused ? "Resume now" : "Pause 15 minutes";
-  $("pause").hidden = !s.enabled;
+  $("pause").hidden = !s.enabled || recording;
   $("power").textContent = s.enabled ? "Switch off" : "Switch on";
   $("power").className = s.enabled ? "" : "main";
   $("rules-only").hidden = s.fg_known || !s.enabled;
@@ -499,7 +552,8 @@ function render(s) {
   const held = $("held");
   held.innerHTML = "";
   if (!s.held.length) {
-    $("held-sub").textContent = !s.enabled ? "Spry is switched off. Nothing is held back."
+    $("held-sub").textContent = recording ? "Holds are released while Spry measures the OFF reference."
+      : !s.enabled ? "Spry is switched off. Nothing is held back."
       : paused ? "Spry is paused. Nothing is held back."
       : "Nothing needs holding back. Spry acts only when an app in the background is busy.";
   } else {
@@ -610,6 +664,16 @@ function refresh() {
 
 $("pause").onclick = () => api("/api/pause?secs=" + (state && state.paused_secs > 0 ? 0 : 900), "POST").then(refresh).catch(showError);
 $("power").onclick = () => saveConfig(cfg => { cfg.enabled = !cfg.enabled; });
+$("record-reference").onclick = async () => {
+  const recording = state?.off_reference?.recording;
+  if (!recording && !await sure("Release Spry’s holds for 65 seconds? Keep doing the same task for a useful OFF baseline. Your settings stay as they are.", "Record OFF")) return;
+  $("record-reference").disabled = true;
+  try {
+    await api(recording ? "/api/off-reference?cancel=1" : "/api/off-reference", "POST");
+    $("ref-note").textContent = recording ? "Cancelling…" : "Starting the recording…";
+  } catch (e) { showError(e); }
+  finally { $("record-reference").disabled = false; }
+};
 $("apps-more").onclick = () => { showQuiet = !showQuiet; busyUntil = 0; if (state) render(state); };
 $("strong").onchange = e => saveConfig(cfg => { cfg.strong = e.target.checked; });
 $("lend").onchange = e => saveConfig(cfg => { cfg.lend = e.target.checked; });

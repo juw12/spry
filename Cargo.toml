@@ -1,6 +1,6 @@
 [package]
 name = "spry"
-version = "0.4.2"
+version = "0.4.3"
 edition = "2024"
 description = "Keeps an old computer quick: holds back background apps so the one you are using gets the machine."
 license = "MIT"

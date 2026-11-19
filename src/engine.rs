@@ -29,6 +29,7 @@ pub const PULSE_RUN: Duration = Duration::from_millis(80);
 /// What the engine, the dashboard and the tray share.
 pub struct Shared {
     pub cfg: Mutex<Config>,
+    pub reference: Mutex<crate::reference::Capture>,
     pub status: Mutex<String>,
     pub quit: AtomicBool,
     pub pause_until: Mutex<Option<Instant>>,
@@ -48,6 +49,7 @@ impl Shared {
     pub fn new(cfg: Config) -> Arc<Self> {
         Arc::new(Shared {
             cfg: Mutex::new(cfg),
+            reference: Mutex::new(crate::reference::Capture::load(config::data_dir())),
             status: Mutex::new("{}".into()),
             quit: AtomicBool::new(false),
             pause_until: Mutex::new(None),
@@ -565,6 +567,7 @@ fn status_json(
         "os": std::env::consts::OS,
         "enabled": cfg.enabled,
         "paused_secs": shared.paused_secs(),
+        "off_reference": shared.reference.lock().unwrap().status(Instant::now()),
         "fg_known": snap.fg.is_some(),
         "fg": snap.fg.and_then(|pid| by_pid.get(&pid)).map(|p| p.name.clone()),
         "cpu": snap.cpu_total,
@@ -610,7 +613,8 @@ pub fn run_loop(shared: &Shared) {
     while !shared.quit.load(Ordering::Relaxed) {
         let cfg = shared.cfg.lock().unwrap().clone();
         let watched = shared.watched.lock().unwrap().is_some_and(|t| t.elapsed() < WATCHED_FOR);
-        let every = if watched || snap.cpu_total >= CALM_BELOW_CPU { SLOW } else { CALM };
+        let recording = shared.reference.lock().unwrap().active();
+        let every = if watched || recording || snap.cpu_total >= CALM_BELOW_CPU { SLOW } else { CALM };
         let slow = measured.is_none_or(|t| t.elapsed() >= every);
         if slow {
             snap = sampler.sample();
@@ -620,7 +624,7 @@ pub fn run_loop(shared: &Shared) {
         // Read it twice a second, so the hold is back quickly when it starts to work.
         snap.front_now = resting.as_ref().and_then(|family| sampler.front_now(family));
 
-        let plan = if cfg.enabled && shared.paused_secs() == 0 {
+        let plan = if !recording && cfg.enabled && shared.paused_secs() == 0 {
             policy::decide(&cfg, &snap, &mut st, Instant::now())
         } else {
             st = PolicyState::default();
@@ -628,6 +632,12 @@ pub fn run_loop(shared: &Shared) {
         };
         engine.apply(&plan, &snap);
         resting = plan.levels.values().any(|level| *level == Level::Lent).then(|| plan.family.clone());
+
+        if recording {
+            // Only fresh readings taken after the engine released its holds qualify for the OFF trace.
+            let cpu = (slow && engine.touched.is_empty()).then_some(snap.cpu_total);
+            shared.reference.lock().unwrap().advance(Instant::now(), cpu);
+        }
 
         if slow {
             let disk = sampler.disk();
