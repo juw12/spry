@@ -96,12 +96,13 @@ fn spry(home: &Path, port: u16, args: &[&str]) -> Command {
     cmd
 }
 
-/// (status code, body) of a request to the running Spry.
+/// (status code, body) of a request to the running Spry. This tiny client reads a single UTF-8 body;
+/// request HTTP/1.0 so chunked-transfer framing cannot split a multi-byte character.
 fn http(port: u16, method: &str, path: &str) -> Option<(u16, String)> {
     let mut stream = TcpStream::connect(("127.0.0.1", port)).ok()?;
     stream.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
     let request =
-        format!("{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        format!("{method} {path} HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
     stream.write_all(request.as_bytes()).ok()?;
     let mut reply = String::new();
     stream.read_to_string(&mut reply).ok()?;
@@ -206,6 +207,16 @@ fn eases_shows_restores_and_rescues() {
     let token = std::fs::read_to_string(home.join("token")).unwrap();
     assert_eq!(http(port, "GET", "/api/status").map(|r| r.0), Some(403), "no token, no answer");
     assert_eq!(http(port, "GET", "/api/status?t=wrong").map(|r| r.0), Some(403));
+    // Reading the chart never starts a load test. Results survive reopening the window and remain private.
+    assert_eq!(http(port, "GET", "/api/bench").map(|r| r.0), Some(403));
+    let last = || http(port, "GET", &format!("/api/bench?t={token}")).expect("a saved-result answer");
+    assert_eq!(last(), (200, "null".to_string()));
+    let saved = home.join("last-measurement.json");
+    std::fs::write(&saved, r#"{"measured_at":123,"test":true}"#).unwrap();
+    let restored: serde_json::Value = serde_json::from_str(&last().1).unwrap();
+    assert_eq!(restored["measured_at"], 123);
+    std::fs::write(saved, "an incomplete result").unwrap();
+    assert_eq!(last(), (200, "null".to_string()));
     // The page brings its own typefaces, behind the same token as everything else.
     let page = http(port, "GET", &format!("/?t={token}")).expect("the page").1;
     assert!(page.contains(&format!("/fonts/geist.woff2?t={token}")), "the page asks Spry itself for its typeface");

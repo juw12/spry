@@ -12,6 +12,27 @@ use tiny_http::{Header, Method, Request, Response, Server};
 const DASHBOARD: &str = include_str!("dashboard.html");
 const JSON: &str = "application/json";
 const FONT: &str = "font/woff2";
+// Only one comparison at a time, even with two dashboards open. The other server thread stays free for status.
+static BENCH_RUN: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn compare() -> (u16, &'static str, String) {
+    let Ok(_run) = BENCH_RUN.try_lock() else { return (409, "text/plain", "A measurement is already running.".into()) };
+    match bench::run(4.0, bench::default_burners()) {
+        Ok(report) => {
+            let at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+            let mut data = serde_json::json!(report);
+            data["measured_at"] = at.into();
+            data["version"] = crate::config::VERSION.into();
+            let path = crate::config::data_dir().join("last-measurement.json");
+            data["saved"] = true.into();
+            if std::fs::write(path, data.to_string()).is_err() {
+                data["saved"] = false.into();
+            }
+            (200, JSON, data.to_string())
+        }
+        Err(e) => (500, "text/plain", e.to_string()),
+    }
+}
 /// The page's typefaces travel inside Spry, so it looks the same offline and asks nobody else.
 const FONTS: [(&str, &[u8]); 3] = [
     ("/fonts/geist.woff2", include_bytes!("../assets/fonts/geist.woff2")),
@@ -129,10 +150,12 @@ fn handle(mut request: Request, shared: &Shared) {
             };
             (200, JSON, serde_json::to_string(&list).unwrap_or_default())
         }
-        "/api/bench" if post => match bench::run(4.0, bench::default_burners()) {
-            Ok(report) => (200, JSON, serde_json::to_string(&report).unwrap_or_default()),
-            Err(e) => (500, "text/plain", e.to_string()),
-        },
+        "/api/bench" if post => compare(),
+        "/api/bench" if *request.method() == Method::Get => {
+            let path = crate::config::data_dir().join("last-measurement.json");
+            let report = std::fs::read_to_string(path).ok().and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok());
+            (200, JSON, report.map(|data| data.to_string()).unwrap_or_else(|| "null".into()))
+        }
         _ => (404, "text/plain", "not found".into()),
     };
 

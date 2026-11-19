@@ -168,6 +168,31 @@ td.num { font-family: var(--mono); font-size: 13px; }
 .fine { margin-top: 14px; color: var(--ink-2); font-size: 13.5px; max-width: 680px; }
 .fine strong { color: var(--ink); font-weight: 600; }
 .scroll { overflow-x: auto; }
+.trend, .compare-card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.trend { padding: 14px 18px 10px; margin-top: 20px; }
+.plot-head, .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.plot-head { justify-content: space-between; }
+.plot-head h2, .compare-card h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.legend, .chart-foot, .plot-axes { font: 11px var(--mono); color: var(--muted); }
+.legend span::before { content: ""; width: 10px; height: 3px; margin-right: 5px; display: inline-block; vertical-align: middle; background: var(--accent); }
+.legend .key-off::before { background: var(--muted); }
+.legend .key-pause::before { background: var(--amber); }
+.trend-body { display: grid; grid-template-columns: 34px 1fr; column-gap: 7px; margin: 12px 0 6px; }
+.plot-axes { display: flex; flex-direction: column; justify-content: space-between; text-align: right; }
+.trend svg { display: block; width: 100%; height: 74px; overflow: visible; }
+.chart-foot { display: flex; justify-content: space-between; margin-left: 41px; gap: 8px; }
+.compare-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,195px),1fr)); gap: 12px; margin: 18px 0; }
+.compare-card { min-width: 0; padding: 14px; }
+.compare-card .direction { color: var(--muted); font-size: 12px; margin-bottom: 14px; }
+.compare-bar { display: grid; grid-template-columns: 3ch minmax(30px, 1fr) auto; gap: 8px; align-items: center; font: 12px var(--mono); margin: 8px 0; }
+.track { height: 8px; background: var(--sunken); border-radius: 2px; overflow: hidden; }
+.track i { display: block; height: 100%; background: var(--muted); }
+.compare-bar.on .track i { background: var(--accent); }
+.delta { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 10px; font-size: 13px; color: var(--ink-2); }
+.delta.good { color: var(--accent); } .delta.bad { color: var(--amber); }
+#bench-detail { margin: 12px 0; }
+#bench-detail summary { font-weight: 500; cursor: pointer; margin-bottom: 8px; }
+#bench-chart[hidden], #bench-detail[hidden] { display: none; }
 .ask { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 20px; background: color-mix(in srgb, var(--ink) 28%, transparent); }
 .ask[hidden] { display: none; }
 .ask-box { width: 100%; max-width: 420px; padding: 22px 22px 18px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: 0 30px 70px -20px rgba(27, 26, 23, .35); }
@@ -251,6 +276,15 @@ td.num { font-family: var(--mono); font-size: 13px; }
       </div>
 
 
+      <div class="trend">
+        <div class="plot-head"><h2>Processor history</h2><div class="legend"><span>On</span><span class="key-off">Off</span><span class="key-pause">Paused</span></div></div>
+        <div class="trend-body"><div class="plot-axes"><span>100%</span><span>50%</span><span>0%</span></div>
+          <svg id="cpu-trend" viewBox="0 0 600 100" preserveAspectRatio="none" role="img" aria-label="Whole-computer CPU usage over the last minute">
+            <path d="M0 1H600 M0 50H600 M0 99H600" fill="none" stroke="var(--line)" vector-effect="non-scaling-stroke"/><g id="trend-lines"></g>
+          </svg>
+        </div><div class="chart-foot"><span>60 seconds ago</span><span id="trend-now">Waiting for a reading</span></div>
+        <p class="sub" style="margin-top:8px">Live readings show load, not speedup. <a href="#measure">Compare Off and On →</a></p>
+      </div>
       <h2 class="section-title">Held back right now</h2>
       <p class="sub" id="held-sub"></p>
       <div class="scroll"><table id="held"></table></div>
@@ -270,11 +304,13 @@ td.num { font-family: var(--mono); font-size: 13px; }
     </section>
 
     <section class="view" data-view="measure" hidden>
-      <div class="page-head"><div><h1>Measure</h1><p>Starts busy background processes for under a minute, then compares the app in front with Spry off and on, and shows what that costs the apps that are held. The busy processes are removed afterwards.</p></div></div>
-      <div class="scroll"><table id="bench"></table></div>
-      <p class="result" id="bench-result"></p>
+      <div class="page-head"><div><h1>Measure</h1><p>Compare the same foreground task under background load, first with no hold (Off), then with Spry’s normal hold (On). This test does not change your settings.</p></div></div>
+      <div class="actions"><button id="measure" class="main">Run comparison</button><span class="sub" role="status" id="bench-note">No measurement yet. A run takes about a minute.</span></div>
+      <div id="bench-chart" class="compare-grid" hidden></div>
       <p class="sub" id="bench-cost"></p>
-      <div class="actions"><button id="measure">Measure now</button><span class="sub" id="bench-note"></span></div>
+      <details id="bench-detail" hidden><summary>Full results, including the quiet baseline</summary>
+        <div class="scroll"><table id="bench"></table></div>
+      </details>
     </section>
 
     <section class="view" data-view="settings" hidden>
@@ -357,8 +393,37 @@ const LEVEL_HELP = {
 };
 const RULES = [["auto", "Automatic"], ["never", "Never slow"], ["always", "Always slow in background"], ["freeze", "Freeze in background"]];
 
+const samples = [];
+function drawTrend(s) {
+  if (!Number.isFinite(s.cpu)) return;
+  const end = Date.now(), start = end - 60000;
+  const mode = !s.enabled ? "Off" : s.paused_secs > 0 ? "Paused" : "On";
+  samples.push({time:end, value:Math.max(0, Math.min(100, s.cpu)), mode});
+  while (samples.length && samples[0].time < start) samples.shift();
+  const colors = {On:"var(--accent)", Off:"var(--muted)", Paused:"var(--amber)"};
+  const svg = (tag, attrs) => {
+    const n = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+    return n;
+  };
+  const group = $("trend-lines");
+  group.replaceChildren();
+  let previous = null;
+  for (const sample of samples) {
+    const x = (sample.time - start) / 100, y = 99 - 0.98 * sample.value;
+    if (previous && sample.time - previous.time <= 6000 && sample.mode === previous.mode) {
+      group.append(svg("line", {x1:previous.x, y1:previous.y, x2:x, y2:y,
+        stroke:colors[sample.mode], "stroke-width":2, "vector-effect":"non-scaling-stroke"}));
+    }
+    group.append(svg("circle", {cx:x, cy:y, r:1.5, fill:colors[sample.mode]}));
+    previous = {time:sample.time, mode:sample.mode, x, y};
+  }
+  $("trend-now").textContent = "Now · " + Math.round(s.cpu) + "% · " + mode;
+}
+
 function render(s) {
   state = s;
+  drawTrend(s);
   const paused = s.paused_secs > 0;
   const pill = $("pill");
   if (!s.enabled) { pill.className = "pill off"; pill.textContent = "Switched off"; }
@@ -555,33 +620,70 @@ $("clear").onclick = () => {
   });
 };
 
-$("measure").onclick = () => {
+const metrics = [
+  {key:"work", title:"Foreground work", unit:"work/s", better:"Higher", up:"more work", down:"less work"},
+  {key:"p50_ms", title:"Typical response", unit:"ms", better:"Lower", up:"slower", down:"faster"},
+  {key:"p95_ms", title:"Slow response (p95)", unit:"ms", better:"Lower", up:"slower", down:"faster"}
+];
+function metricCard(metric, off, on) {
+  const scale = Math.max(off, on) || 1;
+  const card = el("article", {className:"compare-card"}, el("h3", {textContent:metric.title}),
+    el("p", {className:"direction", textContent:metric.better + " is better"}));
+  for (const [label, value] of [["Off", off], ["On", on]]) {
+    const bar = el("i");
+    bar.style.width = (100 * value / scale) + "%";
+    card.append(el("div", {className:"compare-bar " + label.toLowerCase()},
+      el("span", {textContent:label}), el("span", {className:"track"}, bar),
+      el("span", {textContent:value.toFixed(1) + " " + metric.unit})));
+  }
+  const diff = on - off, magnitude = Math.abs(diff).toFixed(1);
+  const same = magnitude === "0.0";
+  const percent = off > 0 ? " (" + (100 * Math.abs(diff) / off).toFixed(1) + "%)" : "";
+  const good = metric.better === "Higher" ? diff > 0 : diff < 0;
+  const summary = same ? "No difference to one decimal place" :
+    magnitude + " " + metric.unit + (diff > 0 ? " " + metric.up : " " + metric.down) + percent;
+  card.append(el("p", {className:"delta" + (same ? "" : good ? " good" : " bad"), textContent:summary}));
+  return card;
+}
+function presentComparison(r) {
+  if (!r || ![r.quiet, r.busy, r.eased, ...(r.pulsed ? [r.pulsed] : [])]
+      .every(p => p && metrics.every(m => Number.isFinite(p[m.key]) && p[m.key] >= 0))) return false;
+  const chart = $("bench-chart");
+  chart.replaceChildren(...metrics.map(m => metricCard(m, r.busy[m.key], r.eased[m.key])));
+  chart.hidden = false;
+  const table = $("bench");
+  table.replaceChildren(el("tr", null, ...["Test phase", "Work/s", "Typical (ms)", "p95 (ms)"].map((t, i) =>
+    el("th", {textContent:t, className:i ? "num" : ""}))));
+  const rows = [["Quiet baseline", r.quiet], ["Busy, Spry off", r.busy], ["Busy, Spry on", r.eased]];
+  if (r.pulsed) rows.push(["Busy, Strong mode", r.pulsed]);
+  for (const [label, p] of rows) table.append(el("tr", null, el("td", {textContent:label}),
+    ...metrics.map(m => el("td", {className:"num", textContent:p[m.key].toFixed(1)}))));
+  $("bench-detail").hidden = false;
+  const b = r.background;
+  $("bench-cost").textContent = b && b.front_works_off > 0 && Number.isFinite(b.rest_share_lent)
+    ? "Background trade-off: while the foreground worked, held apps did " + Math.round(100*b.front_works_held/b.front_works_off) +
+      "% of their unheld work. While it rested, they did " + Math.round(100*b.rest_share_lent) + "%." : "";
+  const stamp = Number.isFinite(r.measured_at) ? new Date(r.measured_at * 1000).toLocaleString() : "this session";
+  $("bench-note").textContent = "Measured " + stamp + " · " + r.cores + " threads · " + r.burners + " background workers" +
+    (r.version ? " · Spry " + r.version : "") + (r.saved === false ? " · not saved" : "");
+  $("measure").textContent = "Run again";
+  return true;
+}
+let comparisonStarted = false;
+api("/api/bench").then(r => { if (!comparisonStarted) presentComparison(r); }).catch(() => {});
+$("measure").onclick = async () => {
+  comparisonStarted = true;
   $("measure").disabled = true;
-  $("bench-note").textContent = "Measuring. The computer will feel busy for under a minute…";
-  api("/api/bench", "POST").then(r => {
-    const table = $("bench");
-    table.innerHTML = "";
-    table.append(el("tr", null, el("th", { textContent: "" }), el("th", { className: "num", textContent: "Work done per second" }),
-      el("th", { className: "num", textContent: "Typical reaction" }), el("th", { className: "num", textContent: "Slow reaction (1 in 20)" })));
-    const rows = [["Quiet computer", r.quiet], ["Busy, Spry off", r.busy], ["Busy, Spry on", r.eased]];
-    if (r.pulsed) rows.push(["Busy, Strong mode", r.pulsed]);
-    for (const [label, p] of rows) {
-      table.append(el("tr", null, el("td", { textContent: label }), el("td", { className: "num", textContent: p.work.toFixed(1) }),
-        el("td", { className: "num", textContent: p.p50_ms.toFixed(1) + " ms" }), el("td", { className: "num", textContent: p.p95_ms.toFixed(1) + " ms" })));
-    }
-    const best = r.eased; // Strong mode is off unless ticked, so it is not the headline
-    const gain = best.work / r.busy.work;
-    $("bench-result").textContent = gain >= 1.05
-      ? "With Spry the app in front did " + gain.toFixed(2) + " times the work, " + Math.round(100 * best.work / r.quiet.work) + "% of a quiet computer."
-      : "No real difference here (" + gain.toFixed(2) + " times). This system already shares the processor well, or the test was disturbed.";
-    const b = r.background;
-    const kept = (speed, of) => Math.round(100 * speed / Math.max(of, 0.001)) + "%";
-    const share = part => Math.round(100 * part) + "%";
-    $("bench-cost").textContent = b ? "The held apps kept " + kept(b.front_works_held, b.front_works_off)
-      + " of their own speed while the app in front worked. While it rested they ran at " + share(b.rest_share_lent)
-      + " (held all the time, as before Spry 0.3: " + share(b.rest_share_held) + ")." : "";
-    $("bench-note").textContent = r.cores + " processor threads, " + r.burners + " busy background processes.";
-  }).catch(showError).finally(() => { $("measure").disabled = false; $("measure").textContent = "Measure again"; });
+  const previous = $("bench-note").textContent;
+  $("bench-note").textContent = "Measuring… The computer will be busy for about a minute.";
+  try {
+    if (!presentComparison(await api("/api/bench", "POST"))) throw new Error("Incomplete measurement.");
+  } catch (e) {
+    $("bench-note").textContent = previous;
+    showError(e);
+  } finally {
+    $("measure").disabled = false;
+  }
 };
 
 // One page at a time, as in the sidebar. The address keeps the page, so a reload stays where you were.

@@ -19,6 +19,11 @@ setting until you choose one at the bottom left, and fits a small window:</sub>
 
 <p><img src="docs/dashboard-dark.png" width="66%" alt="The same page in dark mode">&nbsp;<img src="docs/dashboard-phone.png" width="24%" alt="The same page in a narrow window"></p>
 
+**Overview** plots the last minute of whole-computer CPU usage, with the samples labelled by Spry’s state.
+For a controlled comparison, open **Measure → Run comparison**. Each chart uses the same zero baseline
+for Off and On; throughput is better when higher, while typical and p95 response times are better when lower.
+The latest result is saved on this computer. A live change in CPU use alone is not proof of a speedup.
+
 ## What you get
 
 Measured by the program itself (`spry bench`) on GitHub's test machines, which have 3 or 4 processor
