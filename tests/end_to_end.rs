@@ -192,7 +192,9 @@ fn eases_shows_restores_and_rescues() {
     let rescue = spry(&home, port, &["rescue"]).output().expect("run spry rescue");
     assert!(rescue.status.success());
     assert_eq!(platform::read_level(pid), Some(before), "rescue must put the process back exactly");
-    assert!(String::from_utf8_lossy(&rescue.stdout).contains("Put 1 process"), "rescue says what it did");
+    // Other busy processes on the machine may have been held as well, so the count is 1 or more.
+    let said = String::from_utf8_lossy(&rescue.stdout).to_string();
+    assert!(said.starts_with("Put ") && !said.starts_with("Put 0 "), "rescue says what it did, it said: {said}");
 
     drop(busy);
     sleep(Duration::from_millis(300));
