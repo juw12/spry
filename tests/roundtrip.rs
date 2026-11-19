@@ -136,6 +136,35 @@ fn the_fresh_reading_sees_the_front_app_work_and_rest() {
     assert!(again > 15.0, "working again must show within one reading, read {again:.0}% of one core");
 }
 
+/// The main reading, the one that decides whether the app in front rests: a process that
+/// stops completely must read as using nothing, not keep the last share it showed.
+#[test]
+fn the_main_reading_sees_a_process_stop_completely() {
+    let burner = Burner::start();
+    let mut sampler = Sampler::new();
+    let mut read = || {
+        let snap = sampler.sample();
+        snap.procs.iter().find(|p| p.pid == burner.pid()).map(|p| p.cpu_now).expect("the busy process is listed")
+    };
+    sleep(Duration::from_millis(600));
+    let working = read();
+    assert!(working > 20.0, "a busy process must read as working, read {working:.0}% of one core");
+
+    platform::suspend(burner.pid()).expect("freeze");
+    sleep(Duration::from_millis(300));
+    read(); // this reading still holds the work done before the freeze
+    for round in 0..3 {
+        sleep(Duration::from_millis(600));
+        let stopped = read();
+        assert!(stopped < 1.0, "reading {round} of a frozen process must be 0, read {stopped:.1}% of one core");
+    }
+
+    platform::resume(burner.pid()).expect("thaw");
+    sleep(Duration::from_millis(600));
+    let again = read();
+    assert!(again > 20.0, "working again must show at the next reading, read {again:.0}% of one core");
+}
+
 #[test]
 fn freezing_stops_the_process_and_thawing_starts_it_again() {
     let burner = Burner::start();

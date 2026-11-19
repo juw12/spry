@@ -73,6 +73,8 @@ pub struct Sampler {
     sys: System,
     uid: Option<sysinfo::Uid>,
     smooth: HashMap<u32, f32>,
+    /// Processor time each process had used at the last reading, in ms.
+    spent: HashMap<u32, u64>,
     /// Per process (id, start time): does its program file belong to the system? Looked up once.
     system: HashMap<u32, (u64, bool)>,
     disk: (u64, u64),
@@ -96,6 +98,7 @@ impl Sampler {
             sys: System::new().expect("the operating system refused to report its processes"),
             uid: None,
             smooth: HashMap::new(),
+            spent: HashMap::new(),
             system: HashMap::new(),
             disk: (0, 0),
             disk_at: None,
@@ -190,9 +193,15 @@ impl Sampler {
         }
         let mut procs = Vec::with_capacity(self.sys.processes().len());
         let mut smooth = HashMap::with_capacity(self.smooth.len());
+        let mut spent = HashMap::with_capacity(self.spent.len());
         for (pid, p) in self.sys.processes() {
             let pid = pid.as_u32();
-            let now = p.cpu_usage();
+            // A process that used no processor time at all since the last reading used 0%.
+            // (On macOS the library keeps the last share it worked out for such a process, so
+            // an app that stopped completely would look busy for as long as it stays stopped.)
+            let used = p.accumulated_cpu_time();
+            let now = if self.spent.get(&pid) == Some(&used) { 0.0 } else { p.cpu_usage() };
+            spent.insert(pid, used);
             let cpu = self.smooth.get(&pid).map_or(now, |old| 0.5 * old + 0.5 * now);
             smooth.insert(pid, cpu);
             procs.push(Proc {
@@ -208,6 +217,7 @@ impl Sampler {
             });
         }
         self.smooth = smooth;
+        self.spent = spent;
         let total = self.sys.total_memory().max(1);
         Snapshot {
             procs,
