@@ -327,11 +327,12 @@ pub fn apply(pid: u32, saved: &Saved, deep: bool) -> io::Result<()> {
     Ok(())
 }
 
-/// The app in front rests: the process gets back everything it had, the priority too. On a
-/// computer that is busy with other things a lower priority is not free: on the author's PC,
-/// with about five cores taken by programs Spry was not holding, a process lent the time at
-/// lower priority got 48% of what it got left alone. What Spry set is remembered, so the hold
-/// can come back, and a priority the app changed itself in the meantime is left alone.
+/// The app in front rests: the process gets back everything it had, the priority too. A
+/// lower priority is only free while nothing else wants the processor. On the author's PC,
+/// where other programs were busy at below-normal priority, processes lent the time at
+/// that priority had to share with them and got half or less of what they got left alone (38%
+/// to 51% in four runs of 0.3.0). What Spry set is remembered, so the hold can come back,
+/// and a priority the app changed itself in the meantime is left alone.
 pub fn lend(pid: u32, saved: &Saved) -> io::Result<()> {
     let handle =
         open(pid, PROCESS_SET_INFORMATION | PROCESS_SET_LIMITED_INFORMATION | PROCESS_QUERY_LIMITED_INFORMATION)?;

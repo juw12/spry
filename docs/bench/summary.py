@@ -7,8 +7,9 @@ after the app in front started to work. The tables show the median over all kept
 lowest and highest value seen, so nothing in the README is typed by hand.
 
 Older versions are kept apart and never mixed in: v0.1/ (0.1.1: no kept-free processor threads,
-reactions timed from a timer) and v0.2/ (0.2.0: apps were held whatever the app in front did,
-and pulses were the default on Linux).
+reactions timed from a timer), v0.2/ (0.2.0: apps were held whatever the app in front did, and
+pulses were the default on Linux) and v0.3.0/ (0.3.0: on Windows a process that was lent the
+time kept its lower priority).
 
     python docs/bench/summary.py          # rewrites the tables in README.md
 """
@@ -129,7 +130,7 @@ def change():
     v01, v02, now = load(V01), load(V02), load()
     cell = lambda runs, name, phase="eased": f"{med(gains(runs[name], phase)):.2f}x" if gains(runs.get(name, []), phase) else "-"
     lines = [
-        "| System | 0.1.1 | 0.2.0 | 0.3.0 (now) | With pulses, 0.2.0 | With pulses, now |",
+        "| System | 0.1.1 | 0.2.0 | 0.3.1 (now) | With pulses, 0.2.0 | With pulses, now |",
         "|---|---|---|---|---|---|",
     ]
     for name in NAMES:
