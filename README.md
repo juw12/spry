@@ -120,14 +120,20 @@ What "eased" means on each system:
 - If Spry is killed or the computer crashes, the list of held processes is on disk: the next start,
   or `spry rescue`, puts them back. A frozen app is resumed the same way.
 - If an app changes its own priority (browsers do this for their tabs), Spry leaves that app alone.
-- Nothing needs administrator rights, so Spry cannot touch system processes or other users' apps.
+- The system is left alone twice over: Spry runs without administrator rights, so it cannot reach
+  system services or other users' apps; and it skips every program that lives in a system folder
+  (`C:\Windows`, `/System`, `/usr/libexec` and the like) as well as a built-in list of desktop,
+  sound, call, music and recording apps. Apps that come with the system, such as Photos or Safari,
+  count as apps.
 - The page is served on `127.0.0.1` only and needs a secret token that is created on your computer.
 - Storage cleaning shows what it found and removes nothing until you choose. It only looks at
   caches, temporary files and the bin, never at documents, downloads or app data.
 
 This is tested on every change, on Windows, macOS (Apple silicon and Intel) and Linux
 ([CI](https://github.com/juw12/spry/actions/workflows/ci.yml)): a real busy process is eased,
-paused, frozen, and put back; Spry is killed and `spry rescue` puts the process back.
+paused, frozen, and put back; Spry is killed and `spry rescue` puts the process back. A second check
+([install](https://github.com/juw12/spry/actions/workflows/install.yml)) runs the install steps from
+this page on each system and confirms the installed Spry starts and answers.
 
 ## Commands
 

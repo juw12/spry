@@ -70,6 +70,8 @@ pub struct Sampler {
     sys: System,
     uid: Option<sysinfo::Uid>,
     smooth: HashMap<u32, f32>,
+    /// Per process (id, start time): does its program file belong to the system? Looked up once.
+    system: HashMap<u32, (u64, bool)>,
     disk: (u64, u64),
     disk_at: Option<Instant>,
     pub self_pid: u32,
@@ -87,6 +89,7 @@ impl Sampler {
             sys: System::new().expect("the operating system refused to report its processes"),
             uid: None,
             smooth: HashMap::new(),
+            system: HashMap::new(),
             disk: (0, 0),
             disk_at: None,
             self_pid: std::process::id(),
@@ -124,8 +127,38 @@ impl Sampler {
         self.disk
     }
 
+    /// Finds out where the program file of each new process of this user lives. The path is
+    /// read once per process, so a calm machine costs nothing here.
+    fn note_system_programs(&mut self) {
+        let fresh: Vec<sysinfo::Pid> = self
+            .sys
+            .processes()
+            .iter()
+            .filter(|(pid, p)| {
+                p.user_id() == self.uid.as_ref()
+                    && self.system.get(&pid.as_u32()).is_none_or(|(start, _)| *start != p.start_time())
+            })
+            .map(|(pid, _)| *pid)
+            .collect();
+        if !fresh.is_empty() {
+            let kind = ProcessRefreshKind::nothing().with_exe(UpdateKind::OnlyIfNotSet).without_tasks();
+            self.sys.refresh_processes_specifics(ProcessesToUpdate::Some(&fresh), false, kind);
+            for pid in fresh {
+                if let Some(p) = self.sys.process(pid) {
+                    let system = p.exe().is_some_and(config::is_system_path);
+                    self.system.insert(pid.as_u32(), (p.start_time(), system));
+                }
+            }
+        }
+        let sys = &self.sys;
+        self.system.retain(|pid, _| sys.process(sysinfo::Pid::from_u32(*pid)).is_some());
+    }
+
     pub fn sample(&mut self) -> Snapshot {
         self.refresh();
+        if self.uid.is_some() {
+            self.note_system_programs();
+        }
         let mut procs = Vec::with_capacity(self.sys.processes().len());
         let mut smooth = HashMap::with_capacity(self.smooth.len());
         for (pid, p) in self.sys.processes() {
@@ -141,6 +174,7 @@ impl Sampler {
                 mem: p.memory(),
                 mine: self.uid.is_some() && p.user_id() == self.uid.as_ref(),
                 start: p.start_time(),
+                system: self.system.get(&pid).is_some_and(|(_, system)| *system),
             });
         }
         self.smooth = smooth;
@@ -438,6 +472,7 @@ fn status_json(
         mem: u64,
         count: u32,
         state: u8,
+        system: bool,
     }
     let mut apps: HashMap<&str, App> = HashMap::new();
     for p in snap.procs.iter().filter(|p| p.mine) {
@@ -451,10 +486,11 @@ fn status_json(
                 None => 0,
             }
         };
-        let app = apps.entry(p.name.as_str()).or_insert(App { cpu: 0.0, mem: 0, count: 0, state: 0 });
+        let app = apps.entry(p.name.as_str()).or_insert(App { cpu: 0.0, mem: 0, count: 0, state: 0, system: true });
         app.cpu += p.cpu;
         app.mem += p.mem;
         app.count += 1;
+        app.system &= p.system;
         app.state = app.state.max(state);
     }
     let mut rows: Vec<_> = apps.into_iter().collect();
@@ -469,7 +505,7 @@ fn status_json(
         .map(|(_, (name, a))| {
             let state = ["", "ease", "pulse", "freeze", "front"][a.state as usize];
             json!({ "name": name, "cpu": a.cpu, "mem": a.mem, "count": a.count, "state": state,
-                    "protected": is_protected(name), "rule": policy::rule_for_name(cfg, name) })
+                    "protected": is_protected(name) || a.system, "rule": policy::rule_for_name(cfg, name) })
         })
         .collect();
 

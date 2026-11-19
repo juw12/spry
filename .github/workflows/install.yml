@@ -25,6 +25,11 @@ jobs:
           sleep 5
           "$HOME/.local/bin/spry" version
           "$HOME/.local/bin/spry" status
+      - name: What Spry itself costs after half a minute
+        run: |
+          sleep 30
+          "$HOME/.local/bin/spry" status | head -n 2
+          ps -o rss=,time=,etime= -p "$(pgrep -x spry | head -n 1)"
       - name: Stopping it leaves nothing held
         run: |
           pkill -x spry
@@ -47,6 +52,13 @@ jobs:
           & $spry version | Out-Host
           & $spry status | Out-Host
           if (-not (Get-Process spry -ErrorAction SilentlyContinue)) { throw "Spry is not running" }
+      - name: What Spry itself costs after half a minute
+        shell: pwsh
+        run: |
+          Start-Sleep -Seconds 30
+          $spry = Join-Path $env:LOCALAPPDATA "Programs\Spry\spry.exe"
+          & $spry status | Select-Object -First 2 | Out-Host
+          Get-Process spry | Select-Object WorkingSet64, CPU, StartTime | Format-List | Out-Host
       - name: Stopping it leaves nothing held
         shell: pwsh
         run: |

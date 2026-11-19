@@ -267,6 +267,26 @@ const PROTECTED: &[&str] = &[
     "tidal",
 ];
 
+/// True when the program file is part of the operating system. Spry leaves these alone
+/// whatever their name is, so a system helper it has never heard of is still safe.
+/// Apps that ship with the system (Photos, Mail, Safari and its page processes) are not
+/// counted: they are apps, and a busy one in the background is what Spry is for.
+pub fn is_system_path(path: &std::path::Path) -> bool {
+    let path = path.to_string_lossy().replace('\\', "/").to_lowercase();
+    if cfg!(windows) {
+        let root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".into());
+        let root = root.replace('\\', "/").to_lowercase();
+        return path.strip_prefix(root.trim_end_matches('/')).is_some_and(|rest| rest.starts_with('/'));
+    }
+    let roots: &[&str] = if cfg!(target_os = "macos") {
+        &["/system/", "/usr/libexec/", "/usr/sbin/", "/sbin/", "/library/apple/"]
+    } else {
+        &["/usr/lib/systemd/", "/lib/systemd/", "/usr/libexec/", "/usr/sbin/", "/sbin/"]
+    };
+    let an_app = path.contains("/applications/") || path.contains("/webkit.framework/");
+    roots.iter().any(|root| path.starts_with(root)) && !an_app
+}
+
 pub fn is_protected(name: &str) -> bool {
     PROTECTED.iter().any(|r| matches(r, name))
 }
@@ -314,6 +334,34 @@ mod tests {
         assert!(!matches("code", "codex"));
         assert!(is_protected("discord helper (gpu)"));
         assert!(!is_protected("chrome"));
+    }
+
+    #[test]
+    fn programs_that_belong_to_the_system_are_recognised_by_where_they_live() {
+        let is = |path: &str| is_system_path(std::path::Path::new(path));
+        if cfg!(windows) {
+            let root = std::env::var("SystemRoot").unwrap();
+            assert!(is(&format!("{root}\\System32\\SearchProtocolHost.exe")));
+            assert!(is(&format!("{}\\SystemApps\\x\\SearchApp.exe", root.to_uppercase())));
+            assert!(!is(&format!("{root}Old\\thing.exe")));
+            assert!(!is("C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"));
+        } else if cfg!(target_os = "macos") {
+            assert!(is("/System/Library/CoreServices/iconservicesagent"));
+            assert!(is("/usr/libexec/secinitd"));
+            assert!(!is("/System/Applications/Photos.app/Contents/MacOS/Photos"));
+            assert!(!is("/System/Volumes/Preboot/Cryptexes/App/System/Applications/Safari.app/Contents/MacOS/Safari"));
+            assert!(!is(
+                "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+            ));
+            assert!(!is("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"));
+            assert!(!is("/Users/me/.local/bin/spry"));
+        } else {
+            assert!(is("/usr/lib/systemd/systemd"));
+            assert!(is("/usr/libexec/xdg-desktop-portal"));
+            assert!(!is("/usr/bin/python3"));
+            assert!(!is("/opt/google/chrome/chrome"));
+            assert!(!is("/home/me/.local/bin/spry"));
+        }
     }
 
     #[test]

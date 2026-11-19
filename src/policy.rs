@@ -17,6 +17,8 @@ pub struct Proc {
     /// Owned by the user who runs Spry.
     pub mine: bool,
     pub start: u64,
+    /// The program file belongs to the operating system (see `config::is_system_path`).
+    pub system: bool,
 }
 
 #[derive(Clone, Default)]
@@ -214,7 +216,7 @@ pub fn decide(cfg: &Config, snap: &Snapshot, st: &mut PolicyState, now: Instant)
             st.bg_since.remove(&p.pid);
             continue;
         }
-        if is_protected(&p.name) {
+        if is_protected(&p.name) || p.system {
             continue;
         }
         let rule = tree.rule(cfg, p);
@@ -262,7 +264,16 @@ mod tests {
     use super::*;
 
     fn p(pid: u32, ppid: u32, name: &str, cpu: f32) -> Proc {
-        Proc { pid, ppid: Some(ppid), name: name.into(), cpu, mem: 200 << 20, mine: true, start: pid as u64 }
+        Proc {
+            pid,
+            ppid: Some(ppid),
+            name: name.into(),
+            cpu,
+            mem: 200 << 20,
+            mine: true,
+            start: pid as u64,
+            system: false,
+        }
     }
 
     /// explorer(10) -> editor(20) -> helper(21); explorer -> browser(30) -> tab(31); spry(40)
