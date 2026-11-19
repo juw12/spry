@@ -30,6 +30,11 @@ pub struct Background {
     pub front_rests_held: f64,
     pub front_rests_pulsed: Option<f64>,
     pub front_rests_lent: f64,
+    /// The same three as a share of `front_rests_off`. The ways take turns in rounds; this is
+    /// the middle round of (speed this way / speed left alone in the same round).
+    pub rest_share_held: f64,
+    pub rest_share_pulsed: Option<f64>,
+    pub rest_share_lent: f64,
 }
 
 #[derive(Serialize, Debug)]
@@ -126,15 +131,20 @@ fn measure(n: u64, secs: f64) -> Phase {
 /// A process that only burns CPU. Stops by itself, so none is ever left behind for long.
 /// With a file to write to, it notes there how many steps it has done, about 40 times a second.
 pub fn burn(secs: u64, note: Option<&Path>) {
+    use std::io::{Seek, SeekFrom, Write};
     let t = Instant::now();
+    // The note stays open and is written over in place: one small write that never waits.
+    // (Creating the file anew each time made the process wait for the disk 40 times a second,
+    // and a process that waits is treated differently from one that only computes.)
+    let mut note = note.and_then(|path| std::fs::File::create(path).ok());
     let (mut steps, mut noted) = (0u64, Instant::now());
     while t.elapsed().as_secs() < secs {
         chunk(2_000_000);
         steps += 1;
-        if let Some(file) = note
+        if let Some(file) = &mut note
             && noted.elapsed() >= Duration::from_millis(25)
         {
-            let _ = std::fs::write(file, steps.to_string());
+            let _ = file.seek(SeekFrom::Start(0)).and_then(|_| file.write_all(format!("{steps:020}").as_bytes()));
             noted = Instant::now();
         }
     }
@@ -220,37 +230,46 @@ pub fn run(secs: f64, burners: usize) -> std::io::Result<Report> {
     };
 
     // The other side of the trade: the app in front rests now, and the held apps are timed.
-    // The ways of holding take turns, three rounds, so a machine whose speed drifts (shared
-    // test machines do) cannot favour one of them.
-    const ROUNDS: usize = 3;
-    let rest = || sleep(Duration::from_secs_f64(secs / 4.0));
-    let (mut held, mut pulsed_rest, mut lent, mut off) = (0.0, 0.0, 0.0, 0.0);
+    // The ways of holding take turns, five rounds, and each is compared with "left alone" in
+    // the same round. The middle round counts, so a machine whose speed drifts or stumbles
+    // once (shared test machines do both) cannot favour one of them.
+    const ROUNDS: usize = 5;
+    let rest = || sleep(Duration::from_secs_f64(secs / 5.0));
+    let (mut held, mut pulsed_rest, mut lent, mut off) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     for _ in 0..ROUNDS {
         hold(Hold::Deep);
-        held += kids.speed_during(rest).1;
+        held.push(kids.speed_during(rest).1);
         if cfg!(unix) {
             let pulse = Pulse::new();
             pulse.set(pids.clone());
             sleep(Duration::from_millis(300));
-            pulsed_rest += kids.speed_during(rest).1;
+            pulsed_rest.push(kids.speed_during(rest).1);
         }
         hold(Hold::Lent);
-        lent += kids.speed_during(rest).1;
+        lent.push(kids.speed_during(rest).1);
         for (pid, s) in &saved {
             let _ = platform::restore(*pid, s);
         }
         sleep(Duration::from_millis(300));
-        off += kids.speed_during(rest).1;
+        off.push(kids.speed_during(rest).1);
     }
-    let rounds = ROUNDS as f64;
+    let mean = |speeds: &[f64]| speeds.iter().sum::<f64>() / speeds.len().max(1) as f64;
+    let share = |speeds: &[f64]| {
+        let mut shares: Vec<f64> = speeds.iter().zip(&off).map(|(speed, alone)| speed / alone.max(0.001)).collect();
+        shares.sort_by(f64::total_cmp);
+        shares[shares.len() / 2]
+    };
 
     let background = Background {
         front_works_off,
         front_works_held,
-        front_rests_off: off / rounds,
-        front_rests_held: held / rounds,
-        front_rests_pulsed: cfg!(unix).then_some(pulsed_rest / rounds),
-        front_rests_lent: lent / rounds,
+        front_rests_off: mean(&off),
+        front_rests_held: mean(&held),
+        front_rests_pulsed: cfg!(unix).then(|| mean(&pulsed_rest)),
+        front_rests_lent: mean(&lent),
+        rest_share_held: share(&held),
+        rest_share_pulsed: cfg!(unix).then(|| share(&pulsed_rest)),
+        rest_share_lent: share(&lent),
     };
     Ok(Report {
         os: std::env::consts::OS,
@@ -301,16 +320,15 @@ pub fn print(r: &Report) {
     }
 
     let b = &r.background;
-    let share = |speed: f64, of: f64| 100.0 * speed / of.max(0.001);
     println!("\nWhat that costs the apps that are held (their own speed, with Spry off = 100%):");
-    println!("  {:<46}{:>5.0}%", "while the app in front works", share(b.front_works_held, b.front_works_off));
     println!(
         "  {:<46}{:>5.0}%",
-        "while it rests, held anyway (Spry before 0.3)",
-        share(b.front_rests_held, b.front_rests_off)
+        "while the app in front works",
+        100.0 * b.front_works_held / b.front_works_off.max(0.001)
     );
-    if let Some(pulsed) = b.front_rests_pulsed {
-        println!("  {:<46}{:>5.0}%", "the same with pulses", share(pulsed, b.front_rests_off));
+    println!("  {:<46}{:>5.0}%", "while it rests, held anyway (Spry before 0.3)", 100.0 * b.rest_share_held);
+    if let Some(pulsed) = b.rest_share_pulsed {
+        println!("  {:<46}{:>5.0}%", "the same with pulses", 100.0 * pulsed);
     }
-    println!("  {:<46}{:>5.0}%", "while it rests, now: the time is lent", share(b.front_rests_lent, b.front_rests_off));
+    println!("  {:<46}{:>5.0}%", "while it rests, now: the time is lent", 100.0 * b.rest_share_lent);
 }

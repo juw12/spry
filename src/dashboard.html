@@ -145,7 +145,7 @@ footer button { font-size: 13px; padding: 3px 9px; }
   </section>
 
   <section>
-    <div class="head"><div class="grow"><h2>Measure on this computer</h2><p class="sub">Starts busy background processes for about half a minute, then compares the app in front with Spry off and on, and shows what that costs the apps that are held. The busy processes are removed afterwards.</p></div></div>
+    <div class="head"><div class="grow"><h2>Measure on this computer</h2><p class="sub">Starts busy background processes for under a minute, then compares the app in front with Spry off and on, and shows what that costs the apps that are held. The busy processes are removed afterwards.</p></div></div>
     <div class="scroll"><table id="bench"></table></div>
     <p class="result" id="bench-result"></p>
     <p class="sub" id="bench-cost"></p>
@@ -423,9 +423,10 @@ $("measure").onclick = () => {
       : "No real difference here (" + gain.toFixed(2) + " times). This system already shares the processor well, or the test was disturbed.";
     const b = r.background;
     const kept = (speed, of) => Math.round(100 * speed / Math.max(of, 0.001)) + "%";
+    const share = part => Math.round(100 * part) + "%";
     $("bench-cost").textContent = b ? "The held apps kept " + kept(b.front_works_held, b.front_works_off)
-      + " of their own speed while the app in front worked. While it rested they ran at " + kept(b.front_rests_lent, b.front_rests_off)
-      + " (held all the time, as before Spry 0.3: " + kept(b.front_rests_held, b.front_rests_off) + ")." : "";
+      + " of their own speed while the app in front worked. While it rested they ran at " + share(b.rest_share_lent)
+      + " (held all the time, as before Spry 0.3: " + share(b.rest_share_held) + ")." : "";
     $("bench-note").textContent = r.cores + " processor threads, " + r.burners + " busy background processes.";
   }).catch(showError).finally(() => { $("measure").disabled = false; $("measure").textContent = "Measure again"; });
 };

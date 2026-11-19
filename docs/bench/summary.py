@@ -91,22 +91,24 @@ def table():
     return "\n".join(lines)
 
 
-def kept(results, phase, of):
-    """Speed the held apps kept in `phase`, as a share of their speed in `of` (Spry off), per run."""
-    values = [r["background"][phase] / r["background"][of] for r in results if r["background"].get(phase)]
-    return values
+def shares(results, way):
+    """Speed the held apps kept while the app in front rested, per run, with Spry off = 1.
+    The bench takes the ways in turns and reports the middle round of five."""
+    return [r["background"][way] for r in results if r["background"].get(way) is not None]
 
 
 def cost_row(name, results, times):
     share = lambda values: f"{100 * med(values):.0f}%" if values else "not offered"
-    lent = kept(results, "front_rests_lent", "front_rests_off")
+    spread = lambda values: f"({100 * min(values):.0f}-{100 * max(values):.0f})"
+    works = [r["background"]["front_works_held"] / r["background"]["front_works_off"] for r in results]
+    lent = shares(results, "rest_share_lent")
     back = times.get(name)
     return (
-        f"| {NAMES.get(name, name)} | {share(kept(results, 'front_works_held', 'front_works_off'))} "
-        f"| {share(kept(results, 'front_rests_held', 'front_rests_off'))} "
-        f"| {share(kept(results, 'front_rests_pulsed', 'front_rests_off'))} "
-        f"| **{share(lent)}** ({100 * min(lent):.0f}-{100 * max(lent):.0f}) "
-        f"| {(f'{med(back) / 1000:.1f} s ({max(back) / 1000:.1f} s)' if back else 'not timed')} |"
+        f"| {NAMES.get(name, name)} | {share(works)} {spread(works)} "
+        f"| {share(shares(results, 'rest_share_held'))} "
+        f"| {share(shares(results, 'rest_share_pulsed'))} "
+        f"| **{share(lent)}** {spread(lent)} "
+        f"| {(f'{med(back) / 1000:.1f} s ({max(back) / 1000:.1f} s)' if back else 'timed on all threads only')} |"
     )
 
 
@@ -115,7 +117,7 @@ def cost():
     runs = {name: results for name, results in load().items() if all("background" in r for r in results)}
     times = hold_back()
     lines = [
-        "| System | Front app works: held | Front app rests: held anyway (0.2) | The same with pulses (0.2 on Linux) | Front app rests: lent (now, lowest-highest) | Hold back after (slowest) |",
+        "| System | Front app works: held (lowest-highest) | Front app rests: held anyway (0.2) | The same with pulses (0.2 on Linux) | Front app rests: lent (now, lowest-highest) | Hold back after (slowest) |",
         "|---|---|---|---|---|---|",
     ]
     lines += [cost_row(name, runs[name], times) for name in NAMES if name in runs]
