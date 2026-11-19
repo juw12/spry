@@ -22,6 +22,8 @@ pub struct Report {
     pub os: &'static str,
     pub cores: usize,
     pub burners: usize,
+    /// Processor threads eased apps keep off under pressure (0 = this system has no such lever).
+    pub kept_free: usize,
     pub secs: f64,
     pub quiet: Phase,
     pub busy: Phase,
@@ -41,7 +43,7 @@ impl Report {
 }
 
 pub fn cores() -> usize {
-    std::thread::available_parallelism().map_or(2, |n| n.get())
+    platform::usable_threads()
 }
 
 pub fn default_burners() -> usize {
@@ -85,17 +87,32 @@ fn measure(n: u64, secs: f64) -> Phase {
     }
     let work = done as f64 / t.elapsed().as_secs_f64();
 
-    // Short bursts after a pause, like reacting to a click.
+    // Short bursts after a pause, like reacting to a click. A second thread plays the hand on
+    // the mouse: it waits, notes the time and wakes this one. The clock starts at that note,
+    // so a timer that fires late (virtual machines do that) is not counted as a slow reaction.
     let nap = Duration::from_millis(16);
+    let (click, clicks) = std::sync::mpsc::channel::<Instant>();
+    let (done, dones) = std::sync::mpsc::channel::<()>();
+    let hand = std::thread::spawn(move || {
+        let t = Instant::now();
+        while t.elapsed() < half {
+            sleep(nap);
+            if click.send(Instant::now()).is_err() || dones.recv().is_err() {
+                break;
+            }
+        }
+    });
     let mut times = Vec::new();
-    let t = Instant::now();
-    while t.elapsed() < half {
-        let start = Instant::now();
-        sleep(nap);
+    for clicked in clicks {
         chunk(n);
-        times.push(start.elapsed().saturating_sub(nap).as_secs_f64() * 1000.0);
+        times.push(clicked.elapsed().as_secs_f64() * 1000.0);
+        let _ = done.send(());
     }
-    times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let _ = hand.join();
+    if times.is_empty() {
+        times.push(f64::NAN);
+    }
+    times.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let at = |q: f64| times[((times.len() - 1) as f64 * q) as usize];
     Phase { work, p50_ms: at(0.5), p95_ms: at(0.95) }
 }
@@ -163,6 +180,7 @@ pub fn run(secs: f64, burners: usize) -> std::io::Result<Report> {
         os: std::env::consts::OS,
         cores: cores(),
         burners,
+        kept_free: platform::kept_free_count(),
         secs,
         quiet,
         busy,
@@ -195,4 +213,10 @@ pub fn print(r: &Report) {
         100.0 * best.work / r.quiet.work
     );
     println!("Easing on this system: {}.", r.ease_text);
+    if r.kept_free > 0 {
+        println!(
+            "Under pressure {} of the {} processor threads were kept free for the app in front.",
+            r.kept_free, r.cores
+        );
+    }
 }

@@ -32,6 +32,10 @@ jobs:
           mkdir -p bench
           ./target/release/spry bench --secs 4 --json | tee "bench/${{ matrix.os }}.json"
           ls -l target/release/spry* | head -3
+      - name: Measure again on two processor threads only (stand-in for a smaller machine)
+        if: ${{ !cancelled() && runner.os != 'macOS' }}
+        shell: bash
+        run: ./target/release/spry bench --secs 4 --threads 2 --json | tee "bench/${{ matrix.os }}-2threads.json"
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:

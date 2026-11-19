@@ -21,7 +21,7 @@ using gets the machine. Everything is put back when Spry stops.
   spry rescue       put processes back after a crash
   spry version
 
-Options: --no-tray (no tray icon), --json (bench, status), --secs N and --burners N (bench).";
+Options: --no-tray (no tray icon), --json (bench, status), --secs N, --burners N and --threads N (bench).";
 
 fn main() {
     platform::attach_console();
@@ -39,6 +39,12 @@ fn main() {
         }
         "status" => status(has("--json")),
         "bench" => {
+            // A stand-in for a smaller machine: the whole measurement runs on the first N threads.
+            if let Some(threads) = value("--threads").and_then(|s| s.parse::<usize>().ok())
+                && !platform::squeeze(threads.max(1))
+            {
+                fail("this system cannot limit a program to some of the processor threads");
+            }
             let secs = value("--secs").and_then(|s| s.parse().ok()).unwrap_or(4.0f64).clamp(1.0, 60.0);
             let burners =
                 value("--burners").and_then(|s| s.parse().ok()).unwrap_or_else(bench::default_burners).clamp(1, 256);

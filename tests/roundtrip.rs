@@ -156,3 +156,64 @@ fn a_priority_the_app_set_itself_is_never_undone() {
     platform::restore(burner.pid(), &saved).unwrap();
     assert_eq!(platform::read_level(burner.pid()), Some(IDLE_PRIORITY_CLASS as i64), "the app's own choice stays");
 }
+
+#[test]
+fn under_pressure_part_of_the_processor_is_kept_free_and_given_back() {
+    let burner = Burner::start();
+    let pid = burner.pid();
+    let kept = platform::kept_free_count() as u32;
+    // macOS has no such lever, and a machine with one processor thread has nothing to keep free.
+    let Some(before) = platform::cpus_open(pid) else { return };
+    if kept == 0 {
+        return;
+    }
+    let saved = platform::save(pid).expect("save the starting state");
+
+    platform::apply(pid, &saved, false).expect("ease without pressure");
+    assert_eq!(platform::cpus_open(pid), Some(before), "without pressure every processor thread stays open");
+
+    platform::apply(pid, &saved, true).expect("ease under pressure");
+    assert_eq!(platform::cpus_open(pid), Some(before - kept), "under pressure the kept-free threads are closed");
+
+    platform::apply(pid, &saved, false).expect("pressure is over");
+    assert_eq!(platform::cpus_open(pid), Some(before), "when pressure ends they are open again");
+
+    platform::apply(pid, &saved, true).expect("ease under pressure");
+    platform::restore(pid, &saved).expect("put the process back");
+    assert_eq!(platform::cpus_open(pid), Some(before), "letting go opens every thread again");
+
+    // Spry was killed and started again: nothing is remembered but the saved state on disk.
+    platform::apply(pid, &saved, true).expect("ease under pressure");
+    platform::forget(pid);
+    platform::restore(pid, &saved).expect("put the process back from the saved state alone");
+    assert_eq!(platform::cpus_open(pid), Some(before), "the rescue opens every thread again");
+    assert!(burner.load(Duration::from_millis(600)) > 0.2, "the process must still be running");
+}
+
+/// The test stands in for an app that changes its own settings while Spry holds it back.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_choice_the_app_made_itself_while_eased_is_left_alone() {
+    let burner = Burner::start();
+    let pid = burner.pid();
+    let saved = platform::save(pid).expect("save the starting state");
+    platform::apply(pid, &saved, true).expect("ease under pressure");
+
+    let own_disk: libc::c_long = (2 << 13) | 6; // best effort, level 6
+    let mut allowed = [0u64; 16];
+    let one_thread = unsafe {
+        assert_eq!(libc::syscall(libc::SYS_ioprio_set, 1, pid as libc::c_long, own_disk), 0, "set a disk priority");
+        let bytes = std::mem::size_of_val(&allowed);
+        assert!(libc::syscall(libc::SYS_sched_getaffinity, pid as libc::c_long, bytes, allowed.as_mut_ptr()) > 0);
+        let one = [allowed[0] & allowed[0].wrapping_neg()]; // the lowest thread it may still use
+        assert_eq!(libc::syscall(libc::SYS_sched_setaffinity, pid as libc::c_long, 8usize, one.as_ptr()), 0);
+        platform::kept_free_count() > 0
+    };
+
+    platform::restore(pid, &saved).expect("let go of the process");
+    let disk = unsafe { libc::syscall(libc::SYS_ioprio_get, 1, pid as libc::c_long) };
+    assert_eq!(disk, own_disk, "the disk priority the app chose itself must stay");
+    if one_thread {
+        assert_eq!(platform::cpus_open(pid), Some(1), "the processor thread the app chose itself must stay");
+    }
+}

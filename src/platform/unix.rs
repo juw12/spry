@@ -2,7 +2,8 @@
 //!
 //! macOS: the "background" state (the same switch `taskpolicy -b` uses): lowest CPU priority
 //! and throttled disk access. Linux: idle disk priority. A normal user can lower a nice value
-//! but not raise it again, so nice is not used; CPU is held back with pause-and-resume pulses.
+//! but not raise it again, so nice is not used. Under pressure eased apps keep off part of the
+//! processor (which a normal user can undo), and pause-and-resume pulses do the rest.
 
 use super::Saved;
 use std::io;
@@ -10,7 +11,8 @@ use std::io;
 #[cfg(target_os = "macos")]
 pub const EASE_TEXT: &str = "macOS background state: lowest CPU priority and throttled disk access";
 #[cfg(not(target_os = "macos"))]
-pub const EASE_TEXT: &str = "idle disk priority, plus short pause-and-resume pulses under pressure";
+pub const EASE_TEXT: &str =
+    "idle disk priority; under pressure part of the processor is kept free, plus short pause-and-resume pulses";
 pub const CAN_TRIM: bool = false;
 
 pub fn attach_console() {}
@@ -42,6 +44,11 @@ impl NormalPriority {
 /// Only Windows has a cheaper way than the general one, so there is no answer here.
 pub fn cpu_total() -> Option<f32> {
     None
+}
+
+/// The processor threads this process may use.
+pub fn usable_threads() -> usize {
+    std::thread::available_parallelism().map_or(2, |n| n.get())
 }
 
 pub fn trim(_pid: u32) -> io::Result<()> {
@@ -103,6 +110,19 @@ mod os {
     }
 
     pub fn forget(_pid: u32) {}
+
+    /// macOS gives no way to keep another app off a processor core.
+    pub fn kept_free_count() -> usize {
+        0
+    }
+
+    pub fn cpus_open(_pid: u32) -> Option<u32> {
+        None
+    }
+
+    pub fn squeeze(_threads: usize) -> bool {
+        false
+    }
 
     /// The app in front. AppKit only keeps this fresh while a run loop turns, so when called
     /// on the main thread (no tray) the run loop is given one turn first.
@@ -196,43 +216,181 @@ mod os {
         ids
     }
 
+    /// The processor threads a thread may run on, as bits (thread 0 = bit 0).
+    /// None on machines with more than 64 of them: those are left alone.
+    #[cfg(target_os = "linux")]
+    fn cpus_get(tid: u32) -> Option<u64> {
+        let mut words = [0u64; 16];
+        let bytes = std::mem::size_of_val(&words);
+        let got = unsafe { libc::syscall(libc::SYS_sched_getaffinity, tid as libc::c_long, bytes, words.as_mut_ptr()) };
+        (got > 0 && words[1..].iter().all(|w| *w == 0) && words[0] != 0).then_some(words[0])
+    }
+
+    #[cfg(target_os = "linux")]
+    fn cpus_set(tid: u32, mask: u64) -> bool {
+        let words = [mask];
+        let bytes = std::mem::size_of_val(&words);
+        unsafe { libc::syscall(libc::SYS_sched_setaffinity, tid as libc::c_long, bytes, words.as_ptr()) == 0 }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn cpus_get(_tid: u32) -> Option<u64> {
+        None
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn cpus_set(_tid: u32, _mask: u64) -> bool {
+        false
+    }
+
+    /// The other threads of the same physical core, as bits.
+    fn siblings(cpu: u32) -> u64 {
+        let path = format!("/sys/devices/system/cpu/cpu{cpu}/topology/thread_siblings_list");
+        let text = std::fs::read_to_string(path).unwrap_or_default();
+        let mut mask = 0u64;
+        for part in text.trim().split(',') {
+            let (first, last) = part.split_once('-').unwrap_or((part, part));
+            if let (Ok(first), Ok(last)) = (first.parse::<u32>(), last.parse::<u32>()) {
+                for c in first..=last.min(63) {
+                    mask |= 1 << c;
+                }
+            }
+        }
+        mask
+    }
+
+    /// The processor threads eased apps keep off under pressure, as bits. 0 = not used here.
+    /// Chosen once, among the threads Spry itself may use, strongest cores first.
+    fn kept_free() -> u64 {
+        static FREE: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+        *FREE.get_or_init(|| {
+            let Some(usable) = cpus_get(0) else { return 0 };
+            let mut cores: Vec<(u32, Vec<u32>)> = Vec::new();
+            let mut seen = 0u64;
+            for cpu in (0..64u32).filter(|c| usable & (1 << c) != 0) {
+                if seen & (1 << cpu) != 0 {
+                    continue;
+                }
+                let core = (siblings(cpu) & usable) | (1 << cpu);
+                seen |= core;
+                let strength = std::fs::read_to_string(format!("/sys/devices/system/cpu/cpu{cpu}/cpu_capacity"))
+                    .ok()
+                    .and_then(|t| t.trim().parse().ok())
+                    .unwrap_or(0u32);
+                cores.push((strength, (0..64).filter(|c| core & (1 << c) != 0).collect()));
+            }
+            cores.sort_by_key(|(strength, _)| std::cmp::Reverse(*strength));
+            let cores: Vec<Vec<u32>> = cores.into_iter().map(|(_, threads)| threads).collect();
+            crate::platform::keep_free(&cores).iter().fold(0, |mask, c| mask | (1 << c))
+        })
+    }
+
+    pub fn kept_free_count() -> usize {
+        kept_free().count_ones() as usize
+    }
+
+    /// Limits this program, and what it starts from now on, to its first `threads` processor threads.
+    pub fn squeeze(threads: usize) -> bool {
+        let Some(now) = cpus_get(0) else { return false };
+        let mut keep = 0u64;
+        for cpu in (0..64).filter(|c| now & (1 << c) != 0).take(threads) {
+            keep |= 1 << cpu;
+        }
+        cpus_set(0, keep)
+    }
+
+    /// How many processor threads the process may use right now.
+    pub fn cpus_open(pid: u32) -> Option<u32> {
+        cpus_get(pid).map(u64::count_ones)
+    }
+
     /// The disk priority class: 0 = default, 3 = idle.
     pub fn read_level(pid: u32) -> Option<i64> {
         ioprio_get(pid).map(|v| v >> IOPRIO_CLASS_SHIFT)
     }
 
-    /// The disk priority every thread had before Spry changed it: process -> (thread, value).
-    static BEFORE: Mutex<BTreeMap<u32, Vec<(u32, i64)>>> = Mutex::new(BTreeMap::new());
-
-    pub fn save(pid: u32) -> io::Result<Saved> {
-        ioprio_get(pid).map(|a| Saved { a, b: 0 }).ok_or_else(io::Error::last_os_error)
+    /// What one thread had before Spry changed it.
+    struct Was {
+        tid: u32,
+        disk: i64,
+        /// The processor threads it could use, and what Spry narrowed that to.
+        cpus: Option<(u64, u64)>,
     }
 
-    pub fn apply(pid: u32, _saved: &Saved, _deep: bool) -> io::Result<()> {
+    static BEFORE: Mutex<BTreeMap<u32, Vec<Was>>> = Mutex::new(BTreeMap::new());
+
+    /// `a` is the disk priority, `b` the processor threads the main thread may use (0 = unknown).
+    pub fn save(pid: u32) -> io::Result<Saved> {
+        let a = ioprio_get(pid).ok_or_else(io::Error::last_os_error)?;
+        Ok(Saved { a, b: cpus_get(pid).unwrap_or(0) as i64 })
+    }
+
+    /// Disk priority goes to idle. While `deep` (the machine is under pressure) the process
+    /// also keeps off the processor threads that are kept free for the app in front.
+    pub fn apply(pid: u32, _saved: &Saved, deep: bool) -> io::Result<()> {
+        let free = kept_free();
         let mut before = BEFORE.lock().unwrap();
         let known = before.entry(pid).or_default();
         let mut done = 0;
         for tid in threads(pid) {
-            if !known.iter().any(|(t, _)| *t == tid)
-                && let Some(value) = ioprio_get(tid)
-            {
-                known.push((tid, value));
-            }
+            let at = match known.iter().position(|w| w.tid == tid) {
+                Some(at) => at,
+                None => {
+                    let Some(disk) = ioprio_get(tid) else { continue };
+                    known.push(Was { tid, disk, cpus: None });
+                    known.len() - 1
+                }
+            };
+            let was = &mut known[at];
             if ioprio_set(tid, IOPRIO_IDLE) {
                 done += 1;
+            }
+            if deep && free != 0 {
+                if was.cpus.is_none()
+                    && let Some(now) = cpus_get(tid)
+                {
+                    let narrow = now & !free;
+                    if narrow != 0 && narrow != now && cpus_set(tid, narrow) {
+                        was.cpus = Some((now, narrow));
+                    }
+                }
+            } else if let Some((wide, narrow)) = was.cpus.take() {
+                // Pressure is over. Only undo what is still as Spry left it.
+                if cpus_get(tid) == Some(narrow) {
+                    cpus_set(tid, wide);
+                }
             }
         }
         if done > 0 { Ok(()) } else { Err(io::Error::last_os_error()) }
     }
 
+    /// Puts back only what is still as Spry set it: a value the app changed itself in the
+    /// meantime is the app's own choice and stays.
     pub fn restore(pid: u32, saved: &Saved) -> io::Result<()> {
         let known = BEFORE.lock().unwrap().remove(&pid).unwrap_or_default();
+        let (free, main_wide) = (kept_free(), saved.b as u64);
         let mut done = 0;
         for tid in threads(pid) {
-            // Threads started while eased took over the eased value: they get the main thread's.
-            let value = known.iter().find(|(t, _)| *t == tid).map_or(saved.a, |(_, v)| *v);
-            if ioprio_set(tid, value) {
+            let was = known.iter().find(|w| w.tid == tid);
+            // Threads started while eased took over the eased values: they get the main thread's.
+            let idle = ioprio_get(tid).map(|v| v >> IOPRIO_CLASS_SHIFT) == Some(IOPRIO_IDLE >> IOPRIO_CLASS_SHIFT);
+            if !idle || ioprio_set(tid, was.map_or(saved.a, |w| w.disk)) {
                 done += 1;
+            }
+            let now = cpus_get(tid);
+            match was.and_then(|w| w.cpus) {
+                Some((wide, narrow)) => {
+                    if now == Some(narrow) {
+                        cpus_set(tid, wide);
+                    }
+                }
+                // No note for this thread (started while eased, or Spry was killed and restarted).
+                None => {
+                    let narrow = main_wide & !free;
+                    if narrow != main_wide && narrow != 0 && now == Some(narrow) {
+                        cpus_set(tid, main_wide);
+                    }
+                }
             }
         }
         if done > 0 { Ok(()) } else { Err(io::Error::last_os_error()) }
