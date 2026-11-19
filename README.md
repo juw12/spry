@@ -83,14 +83,15 @@ click sent by a second thread. The 0.1.1 results are kept in `docs/bench/v0.1/`.
   (20 seconds), or run `spry bench`.
 
 **What Spry itself costs.** Measured half a minute after a fresh install on the same test machines
-([install check, run 44468386344](https://github.com/juw12/spry/actions/runs/44468386344)):
+([install check of 0.2.0, run 44476935590](https://github.com/juw12/spry/actions/runs/44476935590)):
 
 | System | Memory | Processor once settled | Processor time in the first 35-45 s, start included |
 |---|---|---|---|
-| Windows | 12.5 MB | 0.3% of one core | 0.22 s |
-| macOS, Apple silicon | 28.5 MB | 1.0% of one core | 0.70 s |
-| macOS, Intel | 21.2 MB | 1.0% of one core | 0.97 s |
-| Linux | 1.3 MB | 0.1% of one core | under 0.01 s |
+| Windows | 12.5 MB | 0.1% of one core | 0.14 s |
+| macOS, Apple silicon | 30.3 MB | 1.4% of one core | 0.55 s |
+| macOS, Intel | 21.1 MB | 1.2% of one core | 0.96 s |
+| Linux, x64 | 1.3 MB | 0.1% of one core | under 0.01 s |
+| Linux, ARM64 | 1.3 MB | 0.1% of one core | under 0.01 s |
 
 On a busy machine it looks more often: on the author's Windows PC (8 cores, 370 processes, 75% busy)
 it used 7.7 MB and about 2% of one core.
