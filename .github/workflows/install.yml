@@ -64,7 +64,8 @@ jobs:
             sha256sum "$file" | cut -d' ' -f1 > got
             cut -d' ' -f1 "$file.sha256" > want
             cmp got want
-            gh attestation verify "$file" -R juw12/spry --signer-workflow juw12/spry/.github/workflows/release.yml
+            gh attestation verify "$file" -R juw12/spry --signer-workflow juw12/spry/.github/workflows/release.yml \
+              --format json --jq '.[].verificationResult.signature.certificate | "'"$file"': " + .sourceRepositoryRef + " " + .sourceRepositoryDigest + " built by " + .buildSignerURI'
           done
 
   windows:
