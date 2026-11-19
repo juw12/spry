@@ -3,8 +3,9 @@
 # Spry
 
 **Keeps an old computer quick.** Spry watches which app you are using and holds the busy apps
-behind it back, so the one in front gets the processor. When you switch apps, it switches with you.
-When Spry stops, everything is exactly as it was.
+behind it back, so the one in front gets the processor. While the app in front rests (you read,
+think, or step away), the others get the processor back, so they are not kept waiting for nothing.
+When you switch apps, it switches with you. When Spry stops, everything is exactly as it was.
 
 One small program for **Windows, macOS and Linux**. Free and open source (MIT). No account, no
 internet connection needed, no administrator rights.
@@ -12,8 +13,9 @@ internet connection needed, no administrator rights.
 ![The Spry page: what is held back right now, and a rule per app](docs/dashboard.png)
 
 <sub>The real page, shown with example apps. **How** says what Spry is doing to a process (eased,
-pulsed or frozen, explained under [How it works](#how-it-works)); **For** says how long. The page
-follows your system's light or dark setting and fits a small window:</sub>
+pulsed, frozen, or at full speed while the app in front rests; explained under
+[How it works](#how-it-works)); **For** says how long. The page follows your system's light or dark
+setting and fits a small window:</sub>
 
 <p><img src="docs/dashboard-dark.png" width="66%" alt="The same page in dark mode">&nbsp;<img src="docs/dashboard-phone.png" width="24%" alt="The same page in a narrow window"></p>
 
@@ -74,16 +76,18 @@ these virtual machines, so they are not compared here; this version times every 
 click sent by a second thread. The 0.1.1 results are kept in `docs/bench/v0.1/`.
 
 - **Quiet** = nothing else running. **Busy, Spry off** = background processes take what they want.
-  **Busy, Spry on** = the same load, held back by Spry (the better of "easing only" and "with pulses").
-- **Easing only** is the default on Windows and macOS. **With pulses** is "Strong mode": the default on
-  Linux, one tick on the page elsewhere.
+  **Busy, Spry on** = the same load, held back by Spry as it comes, with no setting changed.
+- **With Strong mode**: the gain with pulses added (macOS and Linux). Since 0.3.0 Strong mode is off
+  everywhere until you tick it, also on Linux: there the pulses added almost nothing for the app in
+  front and cost the held apps a large part of their speed (see
+  [What it costs the apps that are held](#what-it-costs-the-apps-that-are-held)).
 - **Kept free**: how many processor threads background apps stay off while the machine is under
   pressure (Windows and Linux; macOS gives a normal program no way to do this).
 - **Slowest 5% of reactions**: a second thread "clicks" 60 times a second; this is how long the app
   in front takes to answer, for the slowest twentieth of the clicks.
 - These are shared virtual machines and the numbers move between runs, which is why the lowest and
   highest gain are shown. Your computer will differ, so measure it: press **Measure now** on the page
-  (20 seconds), or run `spry bench`.
+  (under a minute), or run `spry bench`.
 
 **What Spry itself costs.** Measured half a minute after a fresh install on the same test machines
 ([install check of 0.2.0, run 44476935590](https://github.com/juw12/spry/actions/runs/44476935590)):
@@ -102,12 +106,15 @@ author's Windows PC (8 cores, 370 processes, 75% busy) it used 7.7 MB and about 
 ## What it cannot do
 
 - It does not add memory or make the processor faster. It decides who goes first. Work in the
-  background takes longer while you use something else, and gets its speed back when you stop.
+  background takes longer while the app in front is working, and runs at full speed whenever it
+  rests. How much longer is measured under
+  [What it costs the apps that are held](#what-it-costs-the-apps-that-are-held).
 - If the app in front is slow by itself with nothing else running, Spry changes nothing.
 - A computer that is out of memory stays out of memory. On Windows, Spry can ask large background
   apps to give back memory they are not using; on macOS and Linux the system does not offer that.
-- While the machine is under pressure, background apps on Windows and Linux run on fewer processor
-  threads (on a 4-thread machine: 2), so they take longer. That is the price of the gain above.
+- While the app in front works and the machine is under pressure, background apps on Windows and
+  Linux run on fewer processor threads (on a 4-thread machine: 2), so they take longer. That is the
+  price of the gain above. They get every thread back when the app in front rests.
 - The downloads are not signed yet, so Windows and macOS warn on first start (see Install). They
   can be checked another way: see "Check a download" under Install.
 
@@ -175,8 +182,13 @@ the computer is calm) it measures all running apps.
   processor when the app in front does not need it.
 - When the whole processor is above 80% for 4 seconds, easing goes deeper. On Windows and Linux,
   eased apps then stay off part of the processor (about a quarter of the threads, in whole cores,
-  never more than half), so the app in front always finds a free one. Strong mode also **pulses**
-  the heaviest background processes (120 ms paused, 80 ms running).
+  never more than half), so the app in front always finds a free one. Strong mode (off until you
+  tick it) also **pulses** the heaviest background processes (120 ms paused, 80 ms running).
+- **The time is lent.** When the app in front and everything it started have used less than 5% of
+  one processor core for 6 seconds, the held apps get the whole processor back and the page shows
+  them at "Full speed". Spry then looks twice a second, and the hold returns as soon as the app in
+  front works again. Switching to another app counts as working. Apps you set to "always slow" or
+  "freeze" are not lent anything, and one tick on the page ("Lend idle time") switches this off.
 - You can set a rule per app: never slow, always slow in the background, or **freeze** in the
   background (fully paused until you switch back to it).
 - Calls, music, recording and the desktop are on a built-in "never touched" list, and every program
@@ -188,7 +200,7 @@ What "eased" means on each system:
 |---|---|---|
 | Windows 10/11 | Lower priority class. Under pressure also Efficiency mode, low memory priority, and part of the processor kept free. | Also releases unused memory of large background apps when memory runs low. An app that picked its own processor threads keeps them. |
 | macOS 11+ | The system's background state (what `taskpolicy -b` sets): lowest processor priority, throttled disk. | Apple silicon and Intel. |
-| Linux | Idle disk priority. Under pressure part of the processor is kept free, plus pulses. | A normal user cannot raise a priority again after lowering it, so Spry does not lower it; which threads an app may use can be put back, so Spry uses that, and gives every thread back exactly what it had. |
+| Linux | Idle disk priority. Under pressure part of the processor is kept free. | A normal user cannot raise a priority again after lowering it, so Spry does not lower it; which threads an app may use can be put back, so Spry uses that, and gives every thread back exactly what it had. |
 
 ## Safety
 
@@ -223,6 +235,7 @@ Each promise above has a test with a name you can read, run on every change:
 | Everything is put back, exactly | `easing_shows_and_is_put_back_exactly`, `freezing_stops_the_process_and_thawing_starts_it_again`, `under_pressure_part_of_the_processor_is_kept_free_and_given_back` in [tests/roundtrip.rs](https://github.com/juw12/spry/blob/main/tests/roundtrip.rs) |
 | Put back after Spry is killed | `eases_shows_restores_and_rescues` in [tests/end_to_end.rs](https://github.com/juw12/spry/blob/main/tests/end_to_end.rs) |
 | An app's own choice is left alone | `a_priority_the_app_set_itself_is_never_undone`, `a_choice_the_app_made_itself_while_eased_is_left_alone` in [tests/roundtrip.rs](https://github.com/juw12/spry/blob/main/tests/roundtrip.rs) |
+| Held apps get full speed while the app in front rests, and the hold is back within 3 seconds | `lends_while_the_front_app_rests_and_holds_again_when_it_works` in [tests/end_to_end.rs](https://github.com/juw12/spry/blob/main/tests/end_to_end.rs), `lending_gives_the_speed_back_and_the_hold_can_return`, `the_fresh_reading_sees_the_front_app_work_and_rest`, `the_main_reading_sees_a_process_stop_completely` in [tests/roundtrip.rs](https://github.com/juw12/spry/blob/main/tests/roundtrip.rs), `held_apps_are_lent_the_time_while_the_front_app_rests`, `nothing_is_lent_when_switched_off_by_rule_or_without_a_known_front_app` in [src/policy.rs](https://github.com/juw12/spry/blob/main/src/policy.rs) |
 | The app in front is never touched | `busy_background_is_eased_and_the_front_app_is_not`, `focus_on_a_child_window_covers_the_whole_app` in [src/policy.rs](https://github.com/juw12/spry/blob/main/src/policy.rs) |
 | System programs and the "never touched" list are skipped | `programs_that_belong_to_the_system_are_recognised_by_where_they_live` in [src/config.rs](https://github.com/juw12/spry/blob/main/src/config.rs), `never_slow_and_protected_are_left_alone` in [src/policy.rs](https://github.com/juw12/spry/blob/main/src/policy.rs) |
 | The page answers only with the token | `eases_shows_restores_and_rescues` (asks without and with a wrong token) in [tests/end_to_end.rs](https://github.com/juw12/spry/blob/main/tests/end_to_end.rs) |
@@ -242,7 +255,7 @@ program in a system folder.
 spry              start Spry and open its page
 spry open         open the page of the running Spry
 spry status       show what is being held back right now
-spry bench        measure the effect on this computer (about 20 seconds)
+spry bench        measure the effect on this computer (under a minute)
 spry clean        show what storage can be cleared; add --yes to clear it
 spry install      start Spry when you sign in      (spry uninstall undoes it)
 spry rescue       put processes back after a crash
