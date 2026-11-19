@@ -400,10 +400,74 @@ mod os {
         BEFORE.lock().unwrap().remove(&pid);
     }
 
-    /// The process behind the focused window, on X11. Wayland does not tell other programs
-    /// which window is in front, so this is None there (Spry then works from your rules only).
+    /// Asks a Wayland compositor that answers over its own socket (sway, Hyprland, niri) which
+    /// window is in front. The outer None means none of the three is running here.
+    #[cfg(target_os = "linux")]
+    fn compositor_front() -> Option<Option<u32>> {
+        use crate::platform::wayland;
+        use std::io::{BufRead, BufReader, Read, Write};
+        use std::os::unix::net::UnixStream;
+        use std::time::Duration;
+
+        fn open(path: &str) -> Option<UnixStream> {
+            let socket = UnixStream::connect(path).ok()?;
+            socket.set_read_timeout(Some(Duration::from_millis(300))).ok()?;
+            socket.set_write_timeout(Some(Duration::from_millis(300))).ok()?;
+            Some(socket)
+        }
+        // A Spry started at sign-in may not have the compositor's variables; its socket has a known place.
+        fn find(dir: &str, prefix: &str) -> Option<String> {
+            let mut names = std::fs::read_dir(dir).ok()?.flatten().filter_map(|e| e.file_name().into_string().ok());
+            names.find(|name| name.starts_with(prefix)).map(|name| format!("{dir}/{name}"))
+        }
+        let var = |name: &str| std::env::var(name).ok().filter(|v| !v.is_empty());
+        let run = var("XDG_RUNTIME_DIR");
+
+        if let Some(path) = var("SWAYSOCK").or_else(|| find(run.as_deref()?, "sway-ipc.")) {
+            let mut socket = open(&path)?;
+            // The i3 message format: "i3-ipc", length of the request, kind of request (4 = the tree).
+            let mut request = b"i3-ipc".to_vec();
+            request.extend(0u32.to_ne_bytes());
+            request.extend(4u32.to_ne_bytes());
+            socket.write_all(&request).ok()?;
+            let mut head = [0u8; 14];
+            socket.read_exact(&mut head).ok()?;
+            let size = u32::from_ne_bytes(head[6..10].try_into().ok()?) as usize;
+            if !head.starts_with(b"i3-ipc") || size > 32 << 20 {
+                return None;
+            }
+            let mut body = vec![0u8; size];
+            socket.read_exact(&mut body).ok()?;
+            return Some(wayland::sway(&serde_json::from_slice(&body).ok()?));
+        }
+        let hyprland = var("HYPRLAND_INSTANCE_SIGNATURE")
+            .map(|sign| format!("{}/hypr/{sign}", run.as_deref().unwrap_or("/tmp")))
+            .or_else(|| find(&format!("{}/hypr", run.as_deref()?), ""));
+        if let Some(dir) = hyprland {
+            let mut socket = open(&format!("{dir}/.socket.sock"))?;
+            socket.write_all(b"j/activewindow").ok()?;
+            let mut body = Vec::new();
+            let _ = socket.read_to_end(&mut body);
+            return Some(wayland::hyprland(&serde_json::from_slice(&body).ok()?));
+        }
+        if let Some(path) = var("NIRI_SOCKET").or_else(|| find(run.as_deref()?, "niri.")) {
+            let mut socket = open(&path)?;
+            socket.write_all(b"\"FocusedWindow\"\n").ok()?;
+            let mut line = String::new();
+            BufReader::new(socket).read_line(&mut line).ok()?;
+            return Some(wayland::niri(&serde_json::from_str(&line).ok()?));
+        }
+        None
+    }
+
+    /// The process behind the focused window: on Wayland from the compositor where it answers
+    /// (sway, Hyprland, niri), otherwise from X11. GNOME and KDE on Wayland do not tell, so this
+    /// is None there unless an X11 app has the focus (Spry then works from your rules only).
     #[cfg(target_os = "linux")]
     pub fn foreground_pid() -> Option<u32> {
+        if let Some(front) = compositor_front() {
+            return front;
+        }
         use std::sync::Mutex;
         use std::time::{Duration, Instant};
         use x11rb::connection::Connection;

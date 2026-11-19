@@ -14,10 +14,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-15, macos-15-intel, ubuntu-latest]
+        os: [windows-latest, macos-15, macos-15-intel, ubuntu-latest, ubuntu-24.04-arm]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Rust present (some runners come without it)
+        if: runner.os == 'Linux'
+        run: |
+          command -v rustup >/dev/null 2>&1 || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       - name: Toolchain
         run: rustup toolchain install stable --profile minimal --component clippy && rustup default stable
       - uses: Swatinem/rust-cache@v2
@@ -25,6 +30,24 @@ jobs:
         run: cargo clippy --release --all-targets -- -D warnings
       - name: Test (unit, real process levers, the whole program)
         run: cargo test --release --no-fail-fast
+      # sway runs without a screen; a terminal window is opened in it and Spry must name its process.
+      - name: The app in front is seen on Wayland (sway)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update && sudo apt-get install -y sway foot fonts-dejavu-core
+          export XDG_RUNTIME_DIR="$(mktemp -d)"
+          chmod 700 "$XDG_RUNTIME_DIR"
+          unset DISPLAY SWAYSOCK
+          WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 sway -c /dev/null > sway.log 2>&1 &
+          sleep 4
+          export WAYLAND_DISPLAY="$(cd "$XDG_RUNTIME_DIR" && ls | grep '^wayland-[0-9]*$' | head -n 1)"
+          if ./target/release/spry front; then echo "an app was seen on an empty desktop" >&2; exit 1; fi
+          foot sleep 300 > foot.log 2>&1 &
+          app=$!
+          sleep 4
+          seen="$(./target/release/spry front || true)"
+          echo "the terminal is process $app, Spry sees: $seen"
+          if [ "$seen" != "$app" ]; then cat sway.log foot.log; exit 1; fi
       - name: Measure on this runner
         if: ${{ !cancelled() }}
         shell: bash

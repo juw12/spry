@@ -1,6 +1,7 @@
 name: install
 # Runs the two install scripts the README tells people to use, against the published
-# release, on each system - then checks that the installed Spry starts and answers.
+# release, on each system - then checks that the installed Spry starts and answers,
+# that a changed download is refused, and that the download carries a build record.
 on:
   push:
     branches: [main]
@@ -9,15 +10,31 @@ on:
     types: [published]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  attestations: read
+
 jobs:
   unix:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-15, macos-15-intel]
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15, macos-15-intel]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: A changed download is refused and nothing is installed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir changed && cd changed
+          gh release download -R juw12/spry --pattern '*.sha256'
+          for sum in *.sha256; do echo "not spry" > "${sum%.sha256}"; done
+          if SPRY_FROM="file://$PWD" SPRY_INSTALL_DIR="$PWD/out" SPRY_NO_START=1 sh ../install.sh; then
+            echo "a changed download was installed" >&2
+            exit 1
+          fi
+          test ! -e out/spry
       - name: Install the way the README says
         run: sh install.sh
       - name: The installed Spry is running and answers
@@ -36,11 +53,40 @@ jobs:
           sleep 2
           ! pgrep -x spry
           "$HOME/.local/bin/spry" rescue
+      - name: Each download was built by this repository's release workflow
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir built && cd built
+          gh release download -R juw12/spry --pattern 'spry-*'
+          for file in spry-*.zip spry-*.tar.gz; do
+            sha256sum "$file" | cut -d' ' -f1 > got
+            cut -d' ' -f1 "$file.sha256" > want
+            cmp got want
+            gh attestation verify "$file" -R juw12/spry --signer-workflow juw12/spry/.github/workflows/release.yml
+          done
 
   windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: A changed download is refused and nothing is installed
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory changed | Out-Null
+          gh release download -R juw12/spry --pattern 'spry-windows-x64.zip.sha256' --dir changed
+          Set-Content changed/spry-windows-x64.zip "not spry"
+          $server = Start-Process python -ArgumentList "-m", "http.server", "8765", "--bind", "127.0.0.1", "--directory", "changed" -PassThru
+          Start-Sleep -Seconds 3
+          $env:SPRY_FROM = "http://127.0.0.1:8765"
+          $refused = $false
+          try { ./install.ps1 } catch { $refused = $true; Write-Host $_ }
+          $server | Stop-Process -Force
+          if (-not $refused) { throw "a changed download was installed" }
+          if (Test-Path (Join-Path $env:LOCALAPPDATA "Programs\Spry\spry.exe")) { throw "something was installed" }
       - name: Install the way the README says
         shell: pwsh
         run: ./install.ps1

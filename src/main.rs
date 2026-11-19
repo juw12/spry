@@ -19,6 +19,7 @@ using gets the machine. Everything is put back when Spry stops.
   spry clean        show what storage can be cleared; add --yes to clear it
   spry install      start Spry when you sign in      (spry uninstall undoes it)
   spry rescue       put processes back after a crash
+  spry front        show the process id of the app in front (checks that Spry can see it)
   spry version
 
 Options: --no-tray (no tray icon), --json (bench, status), --secs N, --burners N and --threads N (bench).";
@@ -67,6 +68,10 @@ fn main() {
             Err(e) => fail(&format!("could not uninstall: {e}")),
         },
         "rescue" => println!("Put {} process(es) back.", engine::recover()),
+        "front" => match platform::foreground_pid() {
+            Some(pid) => println!("{pid}"),
+            None => fail("Spry cannot see which app is in front right now."),
+        },
         "version" | "--version" | "-V" => println!("spry {VERSION}"),
         _ => println!("{HELP}"),
     }

@@ -39,6 +39,38 @@ pub fn keep_free(cores: &[Vec<u32>]) -> Vec<u32> {
     free
 }
 
+/// Wayland itself does not tell a program which window is in front, but three compositors
+/// answer that question over their own socket. These read the process id out of each answer.
+#[cfg(any(test, target_os = "linux"))]
+pub mod wayland {
+    use serde_json::Value;
+
+    fn pid(window: &Value) -> Option<u32> {
+        window.get("pid")?.as_u64().and_then(|p| u32::try_from(p).ok()).filter(|p| *p > 1)
+    }
+
+    /// sway: the answer to GET_TREE; the focused node is somewhere in the tree.
+    pub fn sway(tree: &Value) -> Option<u32> {
+        fn focused(node: &Value) -> Option<&Value> {
+            if node["focused"] == true {
+                return Some(node);
+            }
+            ["nodes", "floating_nodes"].iter().filter_map(|key| node[*key].as_array()).flatten().find_map(focused)
+        }
+        focused(tree).and_then(pid)
+    }
+
+    /// Hyprland: the answer to `j/activewindow` (an empty object when no window has the focus).
+    pub fn hyprland(window: &Value) -> Option<u32> {
+        pid(window)
+    }
+
+    /// niri: the answer to `"FocusedWindow"`.
+    pub fn niri(reply: &Value) -> Option<u32> {
+        pid(&reply["Ok"]["FocusedWindow"])
+    }
+}
+
 /// A command that never flashes a console window on Windows.
 pub fn command<S: AsRef<std::ffi::OsStr>>(program: S) -> std::process::Command {
     #[allow(unused_mut)]
@@ -74,7 +106,29 @@ pub fn open_url(url: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::keep_free;
+    use super::{keep_free, wayland};
+    use serde_json::json;
+
+    #[test]
+    fn the_window_in_front_is_read_from_each_compositors_answer() {
+        let tree = json!({"type": "root", "focused": false, "nodes": [{"type": "output", "nodes": [
+            {"type": "workspace", "focused": false,
+             "nodes": [{"type": "con", "focused": false, "pid": 700},
+                       {"type": "con", "nodes": [{"type": "con", "focused": true, "pid": 4321}]}],
+             "floating_nodes": [{"type": "floating_con", "focused": false, "pid": 900}]}]}]});
+        assert_eq!(wayland::sway(&tree), Some(4321));
+        let floating = json!({"nodes": [{"nodes": [], "floating_nodes": [{"focused": true, "pid": 900}]}]});
+        assert_eq!(wayland::sway(&floating), Some(900));
+        let empty_workspace = json!({"nodes": [{"type": "workspace", "focused": true, "nodes": []}]});
+        assert_eq!(wayland::sway(&empty_workspace), None, "an empty workspace has the focus: no app in front");
+
+        assert_eq!(wayland::hyprland(&json!({"address": "0x1", "pid": 2222, "class": "foot"})), Some(2222));
+        assert_eq!(wayland::hyprland(&json!({})), None);
+
+        assert_eq!(wayland::niri(&json!({"Ok": {"FocusedWindow": {"id": 3, "pid": 3333}}})), Some(3333));
+        assert_eq!(wayland::niri(&json!({"Ok": {"FocusedWindow": null}})), None);
+        assert_eq!(wayland::niri(&json!({"Err": "unknown request"})), None);
+    }
 
     #[test]
     fn a_quarter_of_the_processor_is_kept_free_in_whole_cores() {
