@@ -11,7 +11,8 @@ internet connection needed, no administrator rights.
 
 ![The Spry page: what is held back right now, and a rule per app](docs/dashboard.png)
 
-<sub>The real page, shown with example apps.</sub>
+<sub>The real page, shown with example apps. It follows your system's light or dark setting and fits a
+small window: [dark](docs/dashboard-dark.png), [narrow](docs/dashboard-phone.png).</sub>
 
 ## What you get
 
@@ -23,21 +24,26 @@ machine has cores, then measures how much work the app in front gets done.
 | System | Cores | Quiet | Busy, Spry off | Busy, Spry on | Gain (lowest-highest) | Of quiet speed | Easing only | With pulses | Slowest 5% of steps, off -> on |
 |---|---|---|---|---|---|---|---|---|---|
 | Windows, x64 | 4 | 250 | 180 | 228 | **1.26x** (1.25-1.27) | 91% | 1.26x | not used | 20.6 -> 5.0 ms |
-| macOS 15, Apple silicon | 3 | 220 | 101 | 245 | **2.36x** (2.13-2.46) | 112% | 2.23x | 2.36x | 67.4 -> 73.5 ms |
-| macOS 15, Intel | 4 | 256 | 119 | 249 | **2.14x** (2.04-2.96) | 97% | 2.10x | 2.14x | 126.3 -> 109.8 ms |
+| macOS 15, Apple silicon | 3 | 220 | 101 | 245 | **2.36x** (2.13-2.46) | 103% | 2.23x | 2.36x | 67.4 -> 73.5 ms |
+| macOS 15, Intel | 4 | 256 | 119 | 249 | **2.14x** (2.04-2.96) | 100% | 2.10x | 2.14x | 126.3 -> 109.8 ms |
 | Linux (Ubuntu), x64 | 4 | 252 | 89 | 218 | **2.45x** (2.23-2.88) | 87% | 1.09x | 2.45x | 15.0 -> 15.1 ms |
 
 Median of 3 CI runs ([44464015119](https://github.com/juw12/spry/actions/runs/44464015119), [44464540756](https://github.com/juw12/spry/actions/runs/44464540756), [44465145704](https://github.com/juw12/spry/actions/runs/44465145704)). Work is in steps per second.
 <!-- bench:end -->
 
+**The weak results, said plainly:** on the Windows test machine the gain is small (1.26x), because
+Windows already gave the app in front most of what it needed there; what improved is the reaction
+time (the last column). On Linux, easing alone does almost nothing for the processor; the gain comes
+from pulses. On the two macOS test machines the reaction time did not improve; the amount of work did.
+
 - **Quiet** = nothing else running. **Busy, Spry off** = background processes take what they want.
   **Busy, Spry on** = the same load, held back by Spry (the better of "easing only" and "with pulses").
 - **Easing only** is the default on Windows and macOS. **With pulses** is "Strong mode": the default on
   Linux, one tick on the page elsewhere.
-- **Slowest 5% of steps**: how long a short piece of work takes after a pause, like reacting to a
-  click. On the two macOS test machines this did not improve; the amount of work did.
+- **Slowest 5% of steps**: how long a short piece of work takes after a pause, like reacting to a click.
 - These are shared virtual machines and the numbers move between runs, which is why the lowest and
-  highest gain are shown. Your computer will differ. Measure it: `spry bench`, or "Measure now" on the page.
+  highest gain are shown. Your computer will differ, so measure it: press **Measure now** on the page
+  (20 seconds), or run `spry bench`.
 
 Spry itself uses about 8 MB of memory and 0.1-0.3% of the processor (measured on Windows with
 370 processes running: 7.7 MB, 2.2% of one of 8 cores).
@@ -53,26 +59,35 @@ Spry itself uses about 8 MB of memory and 0.1-0.3% of the processor (measured on
 
 ## Install
 
-**Windows** (PowerShell):
+**Windows 10 or 11**
 
-```powershell
-irm https://raw.githubusercontent.com/juw12/spry/main/install.ps1 | iex
-```
+1. Download [spry-windows-x64.zip](https://github.com/juw12/spry/releases/latest/download/spry-windows-x64.zip).
+2. Open the zip and drag `spry.exe` to a folder you keep, for example Documents.
+3. Double-click `spry.exe`. Windows shows "Windows protected your PC" because the file is not signed
+   yet: choose **More info**, then **Run anyway**.
 
-**macOS and Linux** (Terminal):
+**macOS 11 or newer** (Apple silicon and Intel). Open Terminal, paste this line, press Return:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/juw12/spry/main/install.sh | sh
 ```
 
-Or download the file for your system from [Releases](https://github.com/juw12/spry/releases/latest),
-unpack it and start `spry`. Both scripts put one file in your user folder and start it; nothing is
-installed system-wide.
+This is the easy way on a Mac: a download through the browser is blocked by macOS until you allow it
+in System Settings > Privacy & Security, because Spry is not signed by Apple yet.
 
-Spry then sits in the tray (Windows) or menu bar (macOS) and opens its page in your browser. On Linux
-there is no tray icon: run `spry open` for the page. Tick "Start Spry when I sign in" to keep it.
+**Linux** (x64): the same line as macOS. Spry needs X11 to see which app is in front. On Wayland
+(the default on current Ubuntu and Fedora) it cannot see that, and only follows the rules you set
+on its page, so it helps less there.
 
-To remove it: `spry uninstall`, quit Spry, delete the file.
+**After the first start** Spry opens its page in your browser and works at once, with no settings.
+It sits in the tray (Windows) or the menu bar (macOS); on Linux, run `spry open` for the page.
+Tick **Start Spry when I sign in** on the page to keep it.
+
+**To undo everything:** press **Quit Spry** on the page (every app is put back at that moment), untick
+"Start Spry when I sign in", and delete the file. Spry leaves nothing else behind except a small
+settings folder.
+
+People who prefer a terminal on Windows: `irm https://raw.githubusercontent.com/juw12/spry/main/install.ps1 | iex`
 
 ## How it works
 

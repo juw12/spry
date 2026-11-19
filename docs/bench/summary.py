@@ -38,6 +38,7 @@ def row(name, results):
         best.append(max(phases, key=lambda p: p["work"]))
     with_spry = med([b["work"] for b in best])
     gains = [b["work"] / r["busy"]["work"] for b, r in zip(best, results)]
+    of_quiet = med([b["work"] / r["quiet"]["work"] for b, r in zip(best, results)])
     eased_gain = med([r["eased"]["work"] / r["busy"]["work"] for r in results])
     pulsed = [r["pulsed"]["work"] / r["busy"]["work"] for r in results if r.get("pulsed")]
     p95_off = med([r["busy"]["p95_ms"] for r in results])
@@ -45,7 +46,7 @@ def row(name, results):
     cores = results[0]["cores"]
     return (
         f"| {NAMES.get(name, name)} | {cores} | {quiet:.0f} | {busy:.0f} | {with_spry:.0f} "
-        f"| **{med(gains):.2f}x** ({min(gains):.2f}-{max(gains):.2f}) | {100 * with_spry / quiet:.0f}% "
+        f"| **{med(gains):.2f}x** ({min(gains):.2f}-{max(gains):.2f}) | {100 * of_quiet:.0f}% "
         f"| {eased_gain:.2f}x | {(f'{med(pulsed):.2f}x' if pulsed else 'not used')} "
         f"| {p95_off:.1f} -> {p95_on:.1f} ms |"
     )

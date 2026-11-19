@@ -4,14 +4,20 @@
 use spry::engine::Pulse;
 use spry::platform;
 use std::process::{Child, Command, Stdio};
+use std::sync::{Mutex, MutexGuard};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
-struct Burner(Child);
+/// One busy process at a time: side by side they take processor time from each other
+/// on a small machine, and the measurements below stop meaning anything.
+static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
+
+struct Burner(Child, #[allow(dead_code)] MutexGuard<'static, ()>);
 
 impl Burner {
     fn start() -> Self {
+        let alone = ONE_AT_A_TIME.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         // At normal priority, also when the test itself was started lower (CI runners are).
         let mut busy = Command::new(env!("CARGO_BIN_EXE_spry"));
         let child = platform::at_normal_priority(&mut busy)
@@ -21,7 +27,7 @@ impl Burner {
             .spawn()
             .expect("start a busy process");
         sleep(Duration::from_millis(300));
-        Burner(child)
+        Burner(child, alone)
     }
 
     fn pid(&self) -> u32 {
@@ -142,6 +148,7 @@ fn a_priority_the_app_set_itself_is_never_undone() {
     );
 
     // The app lowers itself further while Spry holds it: letting go does not raise it.
+    drop(burner);
     let burner = Burner::start();
     let saved = platform::save(burner.pid()).unwrap();
     platform::apply(burner.pid(), &saved, false).unwrap();
