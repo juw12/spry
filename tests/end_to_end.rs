@@ -206,6 +206,16 @@ fn eases_shows_restores_and_rescues() {
     let token = std::fs::read_to_string(home.join("token")).unwrap();
     assert_eq!(http(port, "GET", "/api/status").map(|r| r.0), Some(403), "no token, no answer");
     assert_eq!(http(port, "GET", "/api/status?t=wrong").map(|r| r.0), Some(403));
+    // Reading the chart never starts a load test. Results survive reopening the window and remain private.
+    assert_eq!(http(port, "GET", "/api/bench").map(|r| r.0), Some(403));
+    let last = || http(port, "GET", &format!("/api/bench?t={token}")).expect("a saved-result answer");
+    assert_eq!(last(), (200, "null".to_string()));
+    let saved = home.join("last-measurement.json");
+    std::fs::write(&saved, r#"{"measured_at":123,"test":true}"#).unwrap();
+    let restored: serde_json::Value = serde_json::from_str(&last().1).unwrap();
+    assert_eq!(restored["measured_at"], 123);
+    std::fs::write(saved, "an incomplete result").unwrap();
+    assert_eq!(last(), (200, "null".to_string()));
     // The page brings its own typefaces, behind the same token as everything else.
     let page = http(port, "GET", &format!("/?t={token}")).expect("the page").1;
     assert!(page.contains(&format!("/fonts/geist.woff2?t={token}")), "the page asks Spry itself for its typeface");
