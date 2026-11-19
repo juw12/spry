@@ -40,6 +40,9 @@ a smaller machine.
 Each row is the median over its CI runs ([44474422105](https://github.com/juw12/spry/actions/runs/44474422105), [44474434150](https://github.com/juw12/spry/actions/runs/44474434150), [44474443552](https://github.com/juw12/spry/actions/runs/44474443552), [44474454792](https://github.com/juw12/spry/actions/runs/44474454792), [44475427485](https://github.com/juw12/spry/actions/runs/44475427485), [44475438324](https://github.com/juw12/spry/actions/runs/44475438324), [44475449180](https://github.com/juw12/spry/actions/runs/44475449180)). Work is in steps per second.
 <!-- bench:end -->
 
+These runs were made with 0.2.0. Version 0.2.1 changed only how the page shows the app list, not
+how apps are held back; every later change is run through the same test again.
+
 **The weak results, said plainly:**
 
 - On the Windows test machine with all 4 threads the gain is still the smallest (1.39x), because
@@ -93,8 +96,8 @@ click sent by a second thread. The 0.1.1 results are kept in `docs/bench/v0.1/`.
 | Linux, x64 | 1.3 MB | 0.1% of one core | under 0.01 s |
 | Linux, ARM64 | 1.3 MB | 0.1% of one core | under 0.01 s |
 
-On a busy machine it looks more often: on the author's Windows PC (8 cores, 370 processes, 75% busy)
-it used 7.7 MB and about 2% of one core.
+On a busy machine it looks more often. One reading taken by hand, not from a linked run: on the
+author's Windows PC (8 cores, 370 processes, 75% busy) it used 7.7 MB and about 2% of one core.
 
 ## What it cannot do
 
@@ -137,7 +140,8 @@ in System Settings > Privacy & Security, because Spry is not signed by Apple yet
 
 **After the first start** Spry opens its page in your browser and works at once, with no settings.
 It sits in the tray (Windows) or the menu bar (macOS); on Linux, run `spry open` for the page.
-Tick **Start Spry when I sign in** on the page to keep it.
+Tick **Start Spry when I sign in** on the page to keep it. The page lists the apps that are busy,
+held back or have a rule; apps that are doing nothing are folded away behind one button.
 
 **To undo everything:** press **Quit Spry** on the page (every app is put back at that moment), untick
 "Start Spry when I sign in", and delete the file. Spry leaves nothing else behind except a small
@@ -212,8 +216,20 @@ install steps from this page on each system, confirms the installed Spry starts 
 the installer a changed download and confirms it is refused, and verifies the build record of every
 download.
 
-What went wrong along the way, so you can judge the testing: the seven CI runs behind this
-version's table all passed. Two of the seven runs of 0.1.1 failed a test on macOS Intel (one test expected one held process where Spry rightly held two;
+Each promise above has a test with a name you can read, run on every change:
+
+| Promise | Test |
+|---|---|
+| Everything is put back, exactly | `easing_shows_and_is_put_back_exactly`, `freezing_stops_the_process_and_thawing_starts_it_again`, `under_pressure_part_of_the_processor_is_kept_free_and_given_back` in [tests/roundtrip.rs](https://github.com/juw12/spry/blob/main/tests/roundtrip.rs) |
+| Put back after Spry is killed | `eases_shows_restores_and_rescues` in [tests/end_to_end.rs](https://github.com/juw12/spry/blob/main/tests/end_to_end.rs) |
+| An app's own choice is left alone | `a_priority_the_app_set_itself_is_never_undone`, `a_choice_the_app_made_itself_while_eased_is_left_alone` in [tests/roundtrip.rs](https://github.com/juw12/spry/blob/main/tests/roundtrip.rs) |
+| The app in front is never touched | `busy_background_is_eased_and_the_front_app_is_not`, `focus_on_a_child_window_covers_the_whole_app` in [src/policy.rs](https://github.com/juw12/spry/blob/main/src/policy.rs) |
+| System programs and the "never touched" list are skipped | `programs_that_belong_to_the_system_are_recognised_by_where_they_live` in [src/config.rs](https://github.com/juw12/spry/blob/main/src/config.rs), `never_slow_and_protected_are_left_alone` in [src/policy.rs](https://github.com/juw12/spry/blob/main/src/policy.rs) |
+| The page answers only with the token | `eases_shows_restores_and_rescues` (asks without and with a wrong token) in [tests/end_to_end.rs](https://github.com/juw12/spry/blob/main/tests/end_to_end.rs) |
+| Storage: looking removes nothing, and only caches, temporary files and the bin are looked at | `sweep_removes_only_old_files_and_keeps_the_root`, `only_folders_well_inside_home_or_temp_are_accepted`, `no_cleaning_folder_is_inside_your_own_files` in [src/clean.rs](https://github.com/juw12/spry/blob/main/src/clean.rs) |
+
+What went wrong along the way, so you can judge the testing: the seven CI runs behind the
+table all passed. Two of the seven runs of 0.1.1 failed a test on macOS Intel (one test expected one held process where Spry rightly held two;
 one measured a busy process while other tests ran beside it). Both were faults in the tests and are
 fixed. The reaction-time column of 0.1.1 measured the test's own timer more than Spry (see above).
 The install check also showed 0.1.0 easing two

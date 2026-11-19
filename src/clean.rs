@@ -264,6 +264,18 @@ mod tests {
     }
 
     #[test]
+    fn no_cleaning_folder_is_inside_your_own_files() {
+        let yours = ["Documents", "Downloads", "Desktop", "Pictures", "Music", "Movies", "Videos"];
+        for s in specs() {
+            for root in &s.roots {
+                for folder in yours {
+                    assert!(!root.starts_with(home().join(folder)), "{}: {root:?}", s.id);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn sizes_read_well() {
         assert_eq!(human(1536), "1.5 KB");
         assert_eq!(human(3 << 30), "3.0 GB");

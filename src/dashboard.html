@@ -66,7 +66,11 @@ td { padding: 7px 8px 7px 0; border-bottom: 1px solid var(--line); vertical-alig
 tr:last-child td { border-bottom: 0; }
 .num { text-align: right; white-space: nowrap; }
 th.num { padding-right: 8px; }
-.name { overflow-wrap: anywhere; min-width: 7em; }
+.name { min-width: 7em; }
+.name div { display: flex; gap: 4px; max-width: 24em; }
+.name .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.name .ct { flex: none; color: var(--soft); }
+.more { margin-top: 10px; font-size: 13px; padding: 3px 9px; }
 .chip { display: inline-block; padding: 1px 8px; border-radius: 5px; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
 .chip.front { background: var(--green-soft); color: var(--green); }
 .chip.ease { background: var(--blue-soft); color: var(--blue); }
@@ -91,7 +95,10 @@ footer button { font-size: 13px; padding: 3px 9px; }
   section { padding: 14px; }
   select { max-width: 100px; padding-left: 6px; padding-right: 2px; }
   td, th { padding-right: 6px; }
-  .name { min-width: 5.5em; }
+  /* The name takes the room the other columns leave, so the rule stays in view. */
+  .name { min-width: 5.5em; width: 100%; max-width: 0; }
+  .name div { max-width: none; }
+  .name .ct { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
 </style>
@@ -126,6 +133,8 @@ footer button { font-size: 13px; padding: 3px 9px; }
   <section>
     <div class="head"><div class="grow"><h2>Apps</h2><p class="sub">Spry decides by itself. Set a rule only where you want something else. Calls, music, recording and the system are never touched.</p></div></div>
     <div class="scroll"><table id="apps"></table></div>
+    <p class="empty" id="apps-none" hidden>No app is busy right now.</p>
+    <button class="more" id="apps-more" hidden></button>
   </section>
 
   <section>
@@ -157,7 +166,7 @@ footer button { font-size: 13px; padding: 3px 9px; }
 "use strict";
 const TOKEN = "__TOKEN__";
 const $ = id => document.getElementById(id);
-let state = null, failures = 0, busyUntil = 0;
+let state = null, failures = 0, busyUntil = 0, showQuiet = false;
 
 function api(path, method, body) {
   const sep = path.includes("?") ? "&" : "?";
@@ -193,6 +202,12 @@ function valueWithUnit(value, unit) {
   const frag = document.createDocumentFragment();
   frag.append(value, el("small", { textContent: " " + unit }));
   return frag;
+}
+// A name stays on one line; the full name shows when you point at it.
+function nameCell(name, count) {
+  const box = el("div", null, el("span", { className: "nm", textContent: name, title: name }));
+  if (count > 1) box.append(el("span", { className: "ct", textContent: "(" + count + ")" }));
+  return el("td", { className: "name" }, box);
 }
 const LEVEL = { ease: "Eased", pulse: "Pulsed", freeze: "Frozen", front: "In front" };
 // Share of the whole processor, the same scale as the meter at the top.
@@ -245,7 +260,7 @@ function render(s) {
       el("th", { className: "num hide-narrow", textContent: "For" })));
     for (const h of s.held.slice(0, 40)) {
       held.append(el("tr", null,
-        el("td", { className: "name", textContent: h.name }),
+        nameCell(h.name, 1),
         el("td", null, el("span", { className: "chip " + h.level, textContent: LEVEL[h.level] || h.level, title: LEVEL_HELP[h.level] || "" })),
         el("td", { className: "num", textContent: share(h.cpu, s.cores) }),
         el("td", { className: "num hide-narrow", textContent: size(h.mem) }),
@@ -259,7 +274,15 @@ function render(s) {
     apps.innerHTML = "";
     apps.append(el("tr", null, el("th", { textContent: "App" }), el("th", { className: "num", textContent: "Processor" }),
       el("th", { className: "num hide-narrow", textContent: "Memory" }), el("th", { textContent: "Now" }), el("th", { textContent: "Rule" })));
+    // Apps that are doing nothing, are not held and have no rule of their own are folded away.
+    const quiet = a => !a.state && a.rule === "auto" && a.cpu / Math.max(1, s.cores || 1) < 1;
+    const folded = s.apps.filter(quiet).length;
+    const more = $("apps-more");
+    more.hidden = folded === 0;
+    more.textContent = showQuiet ? "Hide quiet apps" : "Show " + folded + (folded === 1 ? " quiet app" : " quiet apps");
+    $("apps-none").hidden = showQuiet || folded < s.apps.length;
     for (const a of s.apps) {
+      if (!showQuiet && quiet(a)) continue;
       // The app in front counts with everything it started, and with the app that started it.
       const same = a.state === "front" && a.name !== s.fg;
       const now = a.state ? el("span", { className: "chip " + a.state, textContent: same ? "Same app" : LEVEL[a.state],
@@ -272,8 +295,7 @@ function render(s) {
         for (const [value, label] of RULES) rule.append(el("option", { value, textContent: label, selected: a.rule === value }));
         rule.onchange = () => setRule(a.name, rule.value);
       }
-      const label = a.count > 1 ? a.name + " (" + a.count + ")" : a.name;
-      apps.append(el("tr", null, el("td", { className: "name", textContent: label }),
+      apps.append(el("tr", null, nameCell(a.name, a.count),
         el("td", { className: "num", textContent: share(a.cpu, s.cores) }),
         el("td", { className: "num hide-narrow", textContent: size(a.mem) }),
         el("td", null, now), el("td", null, rule)));
@@ -331,6 +353,7 @@ function refresh() {
 
 $("pause").onclick = () => api("/api/pause?secs=" + (state && state.paused_secs > 0 ? 0 : 900), "POST").then(refresh).catch(showError);
 $("power").onclick = () => saveConfig(cfg => { cfg.enabled = !cfg.enabled; });
+$("apps-more").onclick = () => { showQuiet = !showQuiet; busyUntil = 0; if (state) render(state); };
 $("strong").onchange = e => saveConfig(cfg => { cfg.strong = e.target.checked; });
 $("trim").onchange = e => saveConfig(cfg => { cfg.trim_memory = e.target.checked; });
 $("autostart").onchange = e => api("/api/autostart?on=" + (e.target.checked ? 1 : 0), "POST").then(refresh).catch(showError);
