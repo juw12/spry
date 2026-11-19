@@ -327,10 +327,28 @@ pub fn apply(pid: u32, saved: &Saved, deep: bool) -> io::Result<()> {
     Ok(())
 }
 
-/// The app in front rests. A lower priority alone costs nothing while the processor is
-/// free, so that part stays and the app in front still goes first the moment it works again.
+/// The app in front rests: the process gets back everything it had, the priority too. On a
+/// computer that is busy with other things a lower priority is not free: on the author's PC,
+/// with about five cores taken by programs Spry was not holding, a process lent the time at
+/// lower priority got 48% of what it got left alone. What Spry set is remembered, so the hold
+/// can come back, and a priority the app changed itself in the meantime is left alone.
 pub fn lend(pid: u32, saved: &Saved) -> io::Result<()> {
-    apply(pid, saved, false)
+    let handle =
+        open(pid, PROCESS_SET_INFORMATION | PROCESS_SET_LIMITED_INFORMATION | PROCESS_QUERY_LIMITED_INFORMATION)?;
+    set_extras(&handle, saved, false);
+    let current = unsafe { GetPriorityClass(handle.0) };
+    let mut ours = OURS.lock().unwrap();
+    if let Some(set) = ours.get(&pid).copied() {
+        if set == 0 || set != current {
+            ours.insert(pid, 0);
+        } else {
+            if current != saved.a as u32 {
+                check(unsafe { SetPriorityClass(handle.0, saved.a as u32) })?;
+            }
+            ours.insert(pid, saved.a as u32);
+        }
+    }
+    Ok(())
 }
 
 pub fn restore(pid: u32, saved: &Saved) -> io::Result<()> {

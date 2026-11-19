@@ -22,7 +22,8 @@ pub struct Saved {
 /// How hard a held process is held.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Hold {
-    /// The app in front rests: only the part of the hold that costs nothing on a free processor.
+    /// The app in front rests: the process runs as it would without Spry. (Linux keeps the idle
+    /// disk priority, which a normal user could not raise again.)
     Lent,
     Eased,
     /// The whole machine is under pressure.

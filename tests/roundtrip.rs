@@ -100,8 +100,8 @@ fn lending_gives_the_speed_back_and_the_hold_can_return() {
 
         platform::hold(pid, &saved, platform::Hold::Lent).expect("lend the idle time");
         assert_eq!(platform::cpus_open(pid), all, "round {round}: lent, every processor thread is open again");
-        if cfg!(target_os = "macos") {
-            assert_eq!(platform::read_level(pid), Some(before), "round {round}: lent, the background state is lifted");
+        if cfg!(any(target_os = "macos", windows)) {
+            assert_eq!(platform::read_level(pid), Some(before), "round {round}: lent, the state is as it was found");
         }
         assert!(burner.load(Duration::from_millis(600)) > 0.2, "round {round}: lent, the process runs");
     }

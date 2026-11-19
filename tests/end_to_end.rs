@@ -267,6 +267,9 @@ fn lends_while_the_front_app_rests_and_holds_again_when_it_works() {
     };
     // On Linux and Windows without kept-free threads lending shows only in Spry's own report.
     let shows = by_threads || cfg!(target_os = "macos");
+    // On macOS and Windows nothing of the hold is left while the time is lent: the state the
+    // system reports is the one the process started with. (Linux keeps the idle disk priority.)
+    let as_found = cfg!(any(target_os = "macos", windows));
     let level_of = |token: &str, pid: u32| -> Option<String> {
         let (200, body) = http(port, "GET", &format!("/api/status?t={token}"))? else { return None };
         let status: serde_json::Value = serde_json::from_str(&body).ok()?;
@@ -297,13 +300,12 @@ fn lends_while_the_front_app_rests_and_holds_again_when_it_works() {
                 last = seen;
             }
         }
-        before.iter().all(|b| level_of(&token, b.0).as_deref() == Some("lent") && (!shows || !held(b)))
+        before.iter().all(|b| {
+            level_of(&token, b.0).as_deref() == Some("lent")
+                && (!shows || !held(b))
+                && (!as_found || platform::read_level(b.0) == Some(b.1))
+        })
     });
-    if cfg!(target_os = "macos") {
-        for (pid, level, _) in &before {
-            assert_eq!(platform::read_level(*pid), Some(*level), "lent: nothing of the hold is left on macOS");
-        }
-    }
 
     // 3. It works again: the hold is back within three seconds.
     platform::resume(front.0).expect("the app in front works again");
