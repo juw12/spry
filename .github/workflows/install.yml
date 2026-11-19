@@ -1,0 +1,55 @@
+name: install
+# Runs the two install scripts the README tells people to use, against the published
+# release, on each system - then checks that the installed Spry starts and answers.
+on:
+  push:
+    branches: [main]
+    paths: [install.sh, install.ps1, .github/workflows/install.yml]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  unix:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the way the README says
+        run: sh install.sh
+      - name: The installed Spry is running and answers
+        run: |
+          sleep 5
+          "$HOME/.local/bin/spry" version
+          "$HOME/.local/bin/spry" status
+      - name: Stopping it leaves nothing held
+        run: |
+          pkill -x spry
+          sleep 2
+          ! pgrep -x spry
+          "$HOME/.local/bin/spry" rescue
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the way the README says
+        shell: pwsh
+        run: ./install.ps1
+      - name: The installed Spry is running and answers
+        shell: pwsh
+        run: |
+          Start-Sleep -Seconds 5
+          $spry = Join-Path $env:LOCALAPPDATA "Programs\Spry\spry.exe"
+          & $spry version | Out-Host
+          & $spry status | Out-Host
+          if (-not (Get-Process spry -ErrorAction SilentlyContinue)) { throw "Spry is not running" }
+      - name: Stopping it leaves nothing held
+        shell: pwsh
+        run: |
+          $spry = Join-Path $env:LOCALAPPDATA "Programs\Spry\spry.exe"
+          Get-Process spry | Stop-Process -Force
+          & $spry rescue | Out-Host

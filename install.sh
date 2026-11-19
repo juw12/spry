@@ -28,7 +28,13 @@ chmod +x "$dir/spry"
 
 echo "Spry $("$dir/spry" version | cut -d' ' -f2) is in $dir/spry"
 case ":$PATH:" in
-  *":$dir:"*) echo "Start it with:  spry" ;;
-  *) echo "Start it with:  $dir/spry" ;;
+  *":$dir:"*) ;;
+  *) echo "To use the spry command in a terminal, add $dir to your PATH." ;;
 esac
-echo "To start it at every sign-in:  $dir/spry install"
+if [ -n "${SPRY_NO_START:-}" ]; then
+  echo "Start it with:  $dir/spry"
+  exit 0
+fi
+echo "Starting it now. To start it at every sign-in, tick the box on its page."
+# In the background and cut loose from this terminal, so closing the window does not stop it.
+nohup "$dir/spry" >/dev/null 2>&1 &
