@@ -150,6 +150,17 @@ fn handle(mut request: Request, shared: &Shared) {
             };
             (200, JSON, serde_json::to_string(&list).unwrap_or_default())
         }
+        "/api/off-reference" if post => {
+            let mut reference = shared.reference.lock().unwrap();
+            if param("cancel").as_deref() == Some("1") {
+                reference.cancel();
+                ok()
+            } else if reference.start(Instant::now()) {
+                ok()
+            } else {
+                (409, "text/plain", "Already recording an OFF reference.".into())
+            }
+        }
         "/api/bench" if post => compare(),
         "/api/bench" if *request.method() == Method::Get => {
             let path = crate::config::data_dir().join("last-measurement.json");

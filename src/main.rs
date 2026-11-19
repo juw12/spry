@@ -180,7 +180,9 @@ fn status(json: bool) {
         return;
     }
     let s: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
-    let state = if !s["enabled"].as_bool().unwrap_or(false) {
+    let state = if s["off_reference"]["recording"].as_bool() == Some(true) {
+        "recording the OFF reference (no holds)".to_string()
+    } else if !s["enabled"].as_bool().unwrap_or(false) {
         "switched off".to_string()
     } else if s["paused_secs"].as_u64().unwrap_or(0) > 0 {
         format!("paused for {} more seconds", s["paused_secs"])
