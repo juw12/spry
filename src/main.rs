@@ -58,7 +58,11 @@ fn main() {
             }
         }
         "burn" => {
-            bench::burn(args.get(1).and_then(|s| s.parse().ok()).unwrap_or(60), args.get(2).map(std::path::Path::new))
+            let secs = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(60);
+            match args.get(2) {
+                Some(note) => bench::burn_counting(secs, std::path::Path::new(note)),
+                None => bench::burn(secs),
+            }
         }
         "clean" => clean_cli(has("--yes")),
         "install" => match install::install() {

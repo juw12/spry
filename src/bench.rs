@@ -165,10 +165,18 @@ impl Count {
 }
 
 /// A process that only burns CPU. Stops by itself, so none is ever left behind for long.
-/// With a count to share, it notes there how many steps it has done.
-pub fn burn(secs: u64, note: Option<&Path>) {
+/// This is the load the app in front is measured against, unchanged since 0.1.
+pub fn burn(secs: u64) {
     let t = Instant::now();
-    let count = note.and_then(|path| Count::open(path, false).ok());
+    while t.elapsed().as_secs() < secs {
+        chunk(2_000_000);
+    }
+}
+
+/// The same, and it notes in the shared count how many steps it has done.
+pub fn burn_counting(secs: u64, note: &Path) {
+    let t = Instant::now();
+    let count = Count::open(note, false).ok();
     let mut steps = 0u64;
     while t.elapsed().as_secs() < secs {
         chunk(2_000_000);
