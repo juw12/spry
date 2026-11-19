@@ -11,8 +11,11 @@ internet connection needed, no administrator rights.
 
 ![The Spry page: what is held back right now, and a rule per app](docs/dashboard.png)
 
-<sub>The real page, shown with example apps. It follows your system's light or dark setting and fits a
-small window: [dark](docs/dashboard-dark.png), [narrow](docs/dashboard-phone.png).</sub>
+<sub>The real page, shown with example apps. **How** says what Spry is doing to a process (eased,
+pulsed or frozen, explained under [How it works](#how-it-works)); **For** says how long. The page
+follows your system's light or dark setting and fits a small window:</sub>
+
+<p><img src="docs/dashboard-dark.png" width="66%" alt="The same page in dark mode">&nbsp;<img src="docs/dashboard-phone.png" width="24%" alt="The same page in a narrow window"></p>
 
 ## What you get
 
@@ -113,7 +116,8 @@ the computer is calm) it measures all running apps.
   **pulses** the heaviest background processes (120 ms paused, 80 ms running).
 - You can set a rule per app: never slow, always slow in the background, or **freeze** in the
   background (fully paused until you switch back to it).
-- Calls, music, recording, the desktop and the system are on a built-in "never touched" list.
+- Calls, music, recording and the desktop are on a built-in "never touched" list, and every program
+  that lives in a system folder is skipped whatever its name.
 
 What "eased" means on each system:
 
@@ -144,6 +148,13 @@ This is tested on every change, on Windows, macOS (Apple silicon and Intel) and 
 paused, frozen, and put back; Spry is killed and `spry rescue` puts the process back. A second check
 ([install](https://github.com/juw12/spry/actions/workflows/install.yml)) runs the install steps from
 this page on each system and confirms the installed Spry starts and answers.
+
+What went wrong along the way, so you can judge the testing: two of the seven CI runs in the table
+above failed a test on macOS Intel (one test expected one held process where Spry rightly held two;
+one measured a busy process while other tests ran beside it). Both were faults in the tests and are
+fixed; their measurements are kept in the table. The install check also showed 0.1.0 easing two
+macOS system helpers it did not know by name. That was put back as always, and 0.1.1 skips every
+program in a system folder.
 
 ## Commands
 
