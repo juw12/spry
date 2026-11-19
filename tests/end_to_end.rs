@@ -96,10 +96,38 @@ fn http(port: u16, method: &str, path: &str) -> Option<(u16, String)> {
     Some((head.split_whitespace().nth(1)?.parse().ok()?, body.to_string()))
 }
 
+/// Where the running Spry answers, for the report when a wait times out.
+static RUNNING: std::sync::Mutex<Option<(u16, PathBuf)>> = std::sync::Mutex::new(None);
+
+/// What Spry itself saw, in a few lines.
+fn report() -> String {
+    let Some((port, home)) = RUNNING.lock().unwrap().clone() else { return "spry is not running".into() };
+    let token = std::fs::read_to_string(home.join("token")).unwrap_or_default();
+    let Some((code, body)) = http(port, "GET", &format!("/api/status?t={token}")) else {
+        return "spry does not answer".into();
+    };
+    let status: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
+    let busy: Vec<_> = status["apps"]
+        .as_array()
+        .map(|apps| apps.iter().filter(|a| a["name"].as_str().is_some_and(|n| n.starts_with("sprybusy"))).collect())
+        .unwrap_or_default();
+    format!(
+        "status {code}: enabled={} paused={} fg_known={} fg={} held={} refused={} busy rows={:?} level now={:?}",
+        status["enabled"],
+        status["paused_secs"],
+        status["fg_known"],
+        status["fg"],
+        status["held"],
+        status["refused"],
+        busy,
+        Orphan::find().and_then(platform::read_level),
+    )
+}
+
 fn wait_until(what: &str, secs: u64, mut done: impl FnMut() -> bool) {
     let start = Instant::now();
     while !done() {
-        assert!(start.elapsed() < Duration::from_secs(secs), "timed out waiting until {what}");
+        assert!(start.elapsed() < Duration::from_secs(secs), "timed out waiting until {what}\n{}", report());
         sleep(Duration::from_millis(200));
     }
 }
@@ -107,6 +135,7 @@ fn wait_until(what: &str, secs: u64, mut done: impl FnMut() -> bool) {
 fn start_spry(home: &Path, port: u16) -> Kill {
     let child = spry(home, port, &["run", "--no-tray"]).stdout(Stdio::null()).spawn().expect("start spry");
     wait_until("the dashboard answers", 20, || http(port, "GET", "/").is_some());
+    *RUNNING.lock().unwrap() = Some((port, home.to_path_buf()));
     Kill(child)
 }
 

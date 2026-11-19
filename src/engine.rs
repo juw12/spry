@@ -480,6 +480,7 @@ fn status_json(
         "disk_total": disk.0,
         "disk_free": disk.1,
         "held": held,
+        "refused": engine.refused.keys().filter_map(|pid| by_pid.get(pid)).map(|p| p.name.clone()).collect::<Vec<_>>(),
         "apps": apps,
         "events": engine.events,
         "trims": engine.trims,

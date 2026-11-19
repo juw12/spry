@@ -44,12 +44,28 @@ mod os {
     const PRIO_DARWIN_PROCESS: libc::c_int = 4;
     const PRIO_DARWIN_BG: libc::c_int = 0x1000;
 
+    /// The highest priority a throttled (background-state) task can have.
+    const MAXPRI_THROTTLE: i32 = 4;
+
+    /// 1 = in the background state, 0 = not. `getpriority` only answers this for the calling
+    /// process, so the task's base priority is read instead: the background state pins it low.
     pub fn read_level(pid: u32) -> Option<i64> {
-        unsafe {
-            *libc::__error() = 0;
-            let state = libc::getpriority(PRIO_DARWIN_PROCESS, pid as libc::id_t);
-            (*libc::__error() == 0).then_some(state as i64)
+        let mut info = std::mem::MaybeUninit::<libc::proc_taskinfo>::zeroed();
+        let size = std::mem::size_of::<libc::proc_taskinfo>() as libc::c_int;
+        let got = unsafe {
+            libc::proc_pidinfo(
+                pid as libc::c_int,
+                libc::PROC_PIDTASKINFO,
+                0,
+                info.as_mut_ptr() as *mut libc::c_void,
+                size,
+            )
+        };
+        if got != size {
+            return None;
         }
+        let info = unsafe { info.assume_init() };
+        Some((info.pti_priority <= MAXPRI_THROTTLE) as i64)
     }
 
     pub fn save(pid: u32) -> io::Result<Saved> {
@@ -88,7 +104,21 @@ mod os {
         });
         match pid {
             Some(pid) if pid > 0 => Some(pid as u32),
-            _ => lsappinfo_front(),
+            _ => {
+                // The slow way round starts two small programs, so it is asked at most every 3 s.
+                use std::sync::Mutex;
+                use std::time::{Duration, Instant};
+                static LAST: Mutex<Option<(Instant, Option<u32>)>> = Mutex::new(None);
+                let mut last = LAST.lock().ok()?;
+                match *last {
+                    Some((at, pid)) if at.elapsed() < Duration::from_secs(3) => pid,
+                    _ => {
+                        let pid = lsappinfo_front();
+                        *last = Some((Instant::now(), pid));
+                        pid
+                    }
+                }
+            }
         }
     }
 
