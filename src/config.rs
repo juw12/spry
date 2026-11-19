@@ -14,6 +14,8 @@ pub fn port() -> u16 {
 #[serde(default)]
 pub struct Config {
     pub enabled: bool,
+    /// Prefer lower monitoring overhead and background priority to throughput. Off by default.
+    pub resource_saver: bool,
     /// A background process counts as busy above this share of one CPU core (%).
     pub hog_percent: f32,
     /// Whole-machine CPU use (%) that counts as "under pressure".
@@ -35,6 +37,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             enabled: true,
+            resource_saver: false,
             hog_percent: 10.0,
             pressure_cpu: 80.0,
             pressure_mem_free: 15.0,
