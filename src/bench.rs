@@ -48,16 +48,6 @@ pub struct Report {
     pub ease_text: &'static str,
 }
 
-impl Report {
-    /// The strongest result this system offers.
-    pub fn best(&self) -> Phase {
-        match self.pulsed {
-            Some(p) if p.work > self.eased.work => p,
-            _ => self.eased,
-        }
-    }
-}
-
 pub fn cores() -> usize {
     platform::usable_threads()
 }
@@ -285,11 +275,11 @@ pub fn print(r: &Report) {
     };
     row("quiet machine", &r.quiet);
     row("busy, Spry off", &r.busy);
-    row("busy, Spry easing", &r.eased);
+    row("busy, Spry on", &r.eased);
     if let Some(p) = &r.pulsed {
-        row("busy, Spry easing + pulses", p);
+        row("busy, Strong mode", p);
     }
-    let best = r.best();
+    let best = &r.eased;
     println!(
         "\nWith Spry the app in front did {:.2}x the work and answered {:.1}x as fast (95th percentile)",
         best.work / r.busy.work,
@@ -299,6 +289,9 @@ pub fn print(r: &Report) {
         "as with Spry off. A quiet machine is the upper limit: {:.0}% of it was reached.",
         100.0 * best.work / r.quiet.work
     );
+    if let Some(p) = &r.pulsed {
+        println!("Strong mode (pulses, off unless you tick it) reached {:.2}x.", p.work / r.busy.work);
+    }
     println!("Easing on this system: {}.", r.ease_text);
     if r.kept_free > 0 {
         println!(

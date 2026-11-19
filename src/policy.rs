@@ -70,7 +70,16 @@ pub struct PolicyState {
     calm_since: Option<Instant>,
     front: Option<u32>,
     rest_since: Option<Instant>,
+    /// What the app in front, all of it, used at the last reading: share of one core in percent.
+    pub front_cpu: f32,
     pub pressure: bool,
+}
+
+impl PolicyState {
+    /// How long the app in front has been resting. None while it works.
+    pub fn rested(&self, now: Instant) -> Option<Duration> {
+        self.rest_since.map(|since| now.duration_since(since))
+    }
 }
 
 #[derive(Default)]
@@ -229,6 +238,7 @@ pub fn decide(cfg: &Config, snap: &Snapshot, st: &mut PolicyState, now: Instant)
     let works = front_cpu >= FRONT_RESTS_BELOW || snap.front_now.is_some_and(|cpu| cpu >= FRONT_WAKES_AT);
     let rests = fg_known && !works && st.front == snap.fg;
     st.front = snap.fg;
+    st.front_cpu = front_cpu;
     if !rests {
         st.rest_since = None;
     }

@@ -484,7 +484,7 @@ fn status_json(
     snap: &Snapshot,
     plan: &Plan,
     engine: &Engine,
-    pressure: bool,
+    st: &PolicyState,
     disk: (u64, u64),
 ) -> String {
     let by_pid: HashMap<u32, &Proc> = snap.procs.iter().map(|p| (p.pid, p)).collect();
@@ -554,7 +554,10 @@ fn status_json(
         "cpu": snap.cpu_total,
         "mem_free_pct": snap.mem_free_pct,
         "mem_total": snap.mem_total,
-        "pressure": pressure,
+        "pressure": st.pressure,
+        "front_cpu": st.front_cpu,
+        "front_rested_secs": st.rested(Instant::now()).map(|d| d.as_secs_f32()),
+        "front_now": snap.front_now,
         "lending": engine.touched.values().any(|t| t.level == Level::Lent),
         "mem_tight": snap.mem_free_pct < cfg.pressure_mem_free,
         "disk_total": disk.0,
@@ -612,7 +615,7 @@ pub fn run_loop(shared: &Shared) {
 
         if slow {
             let disk = sampler.disk();
-            *shared.status.lock().unwrap() = status_json(shared, &cfg, &snap, &plan, &engine, st.pressure, disk);
+            *shared.status.lock().unwrap() = status_json(shared, &cfg, &snap, &plan, &engine, &st, disk);
             shared.held.store(engine.touched.len(), Ordering::Relaxed);
         }
         thread::sleep(FAST);

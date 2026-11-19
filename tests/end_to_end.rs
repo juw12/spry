@@ -125,15 +125,28 @@ fn report() -> String {
         .map(|apps| apps.iter().filter(|a| a["name"].as_str().is_some_and(|n| n.starts_with("sprybusy"))).collect())
         .unwrap_or_default();
     format!(
-        "status {code}: enabled={} paused={} fg_known={} fg={} held={} refused={} busy rows={:?} level now={:?}",
+        "status {code}: enabled={} paused={} fg_known={} fg={} front: {} held={} refused={} busy rows={:?} level now={:?}",
         status["enabled"],
         status["paused_secs"],
         status["fg_known"],
         status["fg"],
+        front_seen(&status),
         status["held"],
         status["refused"],
         busy,
         Orphan::find(BUSY_NAME).first().copied().and_then(platform::read_level),
+    )
+}
+
+/// What Spry saw of the app in front, and what it decided for the busy apps.
+fn front_seen(status: &serde_json::Value) -> String {
+    let levels: Vec<&str> = status["held"]
+        .as_array()
+        .map(|held| held.iter().filter_map(|h| h["level"].as_str()).collect())
+        .unwrap_or_default();
+    format!(
+        "used {} now {} rested {} s, held {levels:?}",
+        status["front_cpu"], status["front_now"], status["front_rested_secs"]
     )
 }
 
@@ -274,7 +287,16 @@ fn lends_while_the_front_app_rests_and_holds_again_when_it_works() {
 
     // 2. It rests: they get the processor back, all of it.
     platform::suspend(front.0).expect("the app in front stops working");
+    // Printed only when the test fails: what Spry saw, each time it changed.
+    let (stopped, mut last) = (Instant::now(), String::new());
     wait_until("the busy apps are lent the idle time", 40, || {
+        if let Some((200, body)) = http(port, "GET", &format!("/api/status?t={token}")) {
+            let seen = front_seen(&serde_json::from_str(&body).unwrap_or_default());
+            if seen != last {
+                println!("{:5.1} s after the stop: {seen}", stopped.elapsed().as_secs_f32());
+                last = seen;
+            }
+        }
         before.iter().all(|b| level_of(&token, b.0).as_deref() == Some("lent") && (!shows || !held(b)))
     });
     if cfg!(target_os = "macos") {

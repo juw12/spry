@@ -261,6 +261,8 @@ function render(s) {
     const lent = s.held.filter(h => h.level === "lent").length;
     $("held-sub").textContent = lent === s.held.length
       ? "The app in front is resting: " + count + (lent === 1 ? " runs" : " run") + " at full speed until it works again."
+      : lent ? "The app in front is resting: " + lent + " of " + count + (lent === 1 ? " runs" : " run")
+        + " at full speed until it works again. The rest stay held by their rule."
       : count + (s.held.length === 1 ? " gives" : " give") + " way to the app in front.";
     held.append(el("tr", null, el("th", { textContent: "Process" }), el("th", { textContent: "How" }),
       el("th", { className: "num", textContent: "Processor" }), el("th", { className: "num hide-narrow", textContent: "Memory" }),
@@ -408,13 +410,13 @@ $("measure").onclick = () => {
     table.innerHTML = "";
     table.append(el("tr", null, el("th", { textContent: "" }), el("th", { className: "num", textContent: "Work done per second" }),
       el("th", { className: "num", textContent: "Typical reaction" }), el("th", { className: "num", textContent: "Slow reaction (1 in 20)" })));
-    const rows = [["Quiet computer", r.quiet], ["Busy, Spry off", r.busy], ["Busy, Spry easing", r.eased]];
-    if (r.pulsed) rows.push(["Busy, Spry easing and pulses", r.pulsed]);
+    const rows = [["Quiet computer", r.quiet], ["Busy, Spry off", r.busy], ["Busy, Spry on", r.eased]];
+    if (r.pulsed) rows.push(["Busy, Strong mode", r.pulsed]);
     for (const [label, p] of rows) {
       table.append(el("tr", null, el("td", { textContent: label }), el("td", { className: "num", textContent: p.work.toFixed(1) }),
         el("td", { className: "num", textContent: p.p50_ms.toFixed(1) + " ms" }), el("td", { className: "num", textContent: p.p95_ms.toFixed(1) + " ms" })));
     }
-    const best = r.pulsed && r.pulsed.work > r.eased.work ? r.pulsed : r.eased;
+    const best = r.eased; // Strong mode is off unless ticked, so it is not the headline
     const gain = best.work / r.busy.work;
     $("bench-result").textContent = gain >= 1.05
       ? "With Spry the app in front did " + gain.toFixed(2) + " times the work, " + Math.round(100 * best.work / r.quiet.work) + "% of a quiet computer."
