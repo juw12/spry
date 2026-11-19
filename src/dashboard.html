@@ -404,7 +404,7 @@ $("clear").onclick = () => {
 
 $("measure").onclick = () => {
   $("measure").disabled = true;
-  $("bench-note").textContent = "Measuring. The computer will feel busy for about half a minute…";
+  $("bench-note").textContent = "Measuring. The computer will feel busy for under a minute…";
   api("/api/bench", "POST").then(r => {
     const table = $("bench");
     table.innerHTML = "";

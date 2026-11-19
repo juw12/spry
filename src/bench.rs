@@ -132,12 +132,13 @@ fn measure(n: u64, secs: f64) -> Phase {
 
 /// A count of steps that a busy process and the measuring process share: a small file that
 /// both map into memory. Noting a step is one store into memory, with no call into the system.
-/// Even so, a process that counts is not quite the load of one that only computes: with Spry
-/// off, the app in front on some Windows test machines got 8% more against counting processes
-/// and now and then a third less. (Writing the count to a file was worse: about half of a
-/// quiet machine's speed, not the 72% it gets against processes that only compute.) So the app
-/// in front is measured against processes that only compute, and the counting ones are a
-/// second set, used only for what the hold costs the held apps.
+/// Even so, the app in front is not measured against processes that count. With counting
+/// processes the result with Spry off differed by up to 8% on one model of Windows test
+/// machine, and it could not be settled whether the counting caused that, so the question is
+/// removed: the app in front is measured against processes that only compute, exactly as in
+/// 0.2, and the counting ones are a second set, used only for what the hold costs the held
+/// apps. (Writing the count to a file did change the load: the app in front got about half of
+/// a quiet machine's speed, not the 72% it gets against processes that only compute.)
 struct Count {
     cell: *const AtomicU64,
     _map: MmapMut,

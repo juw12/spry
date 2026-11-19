@@ -28,59 +28,81 @@ to a click. On Windows and Linux the test is repeated with only 2 threads allowe
 a smaller machine.
 
 <!-- bench:start -->
-| System | Runs | Threads | Kept free | Quiet | Busy, Spry off | Busy, Spry on | Gain (lowest-highest) | Of quiet speed | Easing only | With pulses | Slowest 5% of reactions, off -> on |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| Windows, x64 | 7 | 4 | 2 | 254 | 183 | 251 | **1.39x** (1.30-1.43) | 99% | 1.39x | not used | 9.7 -> 4.2 ms |
-| macOS 15, Apple silicon | 7 | 3 | none | 255 | 120 | 265 | **2.17x** (1.87-2.38) | 101% | 2.13x | 2.17x | 4.4 -> 5.6 ms |
-| macOS 15, Intel | 7 | 4 | none | 251 | 105 | 236 | **2.50x** (2.12-3.95) | 97% | 2.28x | 2.50x | 4.8 -> 4.8 ms |
-| Linux (Ubuntu), x64 | 7 | 4 | 2 | 252 | 108 | 255 | **2.37x** (2.07-3.23) | 100% | 2.36x | 2.37x | 13.0 -> 4.0 ms |
-| Windows, x64, on 2 threads only | 7 | 2 | 1 | 253 | 78 | 232 | **2.99x** (2.82-3.92) | 92% | 2.99x | not used | 4.4 -> 4.1 ms |
-| Linux (Ubuntu), x64, on 2 threads only | 7 | 2 | 1 | 252 | 95 | 246 | **2.57x** (2.38-2.72) | 98% | 2.53x | 2.56x | 13.9 -> 4.3 ms |
-| Linux (Ubuntu), ARM64 | 3 | 4 | 1 | 250 | 120 | 250 | **2.09x** (2.03-2.93) | 100% | 2.07x | 2.09x | 9.0 -> 4.1 ms |
-| Linux (Ubuntu), ARM64, on 2 threads only | 3 | 2 | 1 | 250 | 83 | 250 | **3.01x** (3.01-3.02) | 100% | 3.01x | 3.01x | 14.0 -> 4.0 ms |
+| System | Runs | Threads | Kept free | Quiet | Busy, Spry off | Busy, Spry on | Gain (lowest-highest) | Of quiet speed | With Strong mode | Slowest 5% of reactions, off -> on |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Windows, x64 | 5 | 4 | 2 | 253 | 183 | 251 | **1.38x** (1.30-1.43) | 100% | not offered | 13.0 -> 4.3 ms |
+| macOS 15, Apple silicon | 5 | 3 | none | 226 | 99 | 218 | **2.15x** (1.98-2.47) | 98% | 2.16x | 5.7 -> 5.4 ms |
+| macOS 15, Intel | 5 | 4 | none | 258 | 111 | 233 | **2.12x** (1.90-2.55) | 90% | 2.27x | 5.8 -> 6.0 ms |
+| Linux (Ubuntu), x64 | 5 | 4 | 2 | 251 | 86 | 251 | **2.90x** (2.34-3.32) | 100% | 2.90x | 13.2 -> 4.1 ms |
+| Windows, x64, on 2 threads only | 5 | 2 | 1 | 256 | 76 | 247 | **3.19x** (1.93-3.53) | 93% | not offered | 4.2 -> 4.0 ms |
+| Linux (Ubuntu), x64, on 2 threads only | 5 | 2 | 1 | 251 | 91 | 229 | **2.59x** (2.46-2.69) | 91% | 2.60x | 13.1 -> 4.3 ms |
+| Linux (Ubuntu), ARM64 | 5 | 4 | 1 | 252 | 90 | 249 | **2.78x** (2.09-3.00) | 99% | 2.78x | 12.0 -> 4.1 ms |
+| Linux (Ubuntu), ARM64, on 2 threads only | 5 | 2 | 1 | 251 | 84 | 251 | **3.00x** (3.00-3.13) | 100% | 3.00x | 13.9 -> 4.0 ms |
 
-Each row is the median over its CI runs ([44474422105](https://github.com/juw12/spry/actions/runs/44474422105), [44474434150](https://github.com/juw12/spry/actions/runs/44474434150), [44474443552](https://github.com/juw12/spry/actions/runs/44474443552), [44474454792](https://github.com/juw12/spry/actions/runs/44474454792), [44475427485](https://github.com/juw12/spry/actions/runs/44475427485), [44475438324](https://github.com/juw12/spry/actions/runs/44475438324), [44475449180](https://github.com/juw12/spry/actions/runs/44475449180)). Work is in steps per second.
+Each row is the median over its CI runs ([44504696799](https://github.com/juw12/spry/actions/runs/44504696799), [44504707412](https://github.com/juw12/spry/actions/runs/44504707412), [44504718465](https://github.com/juw12/spry/actions/runs/44504718465), [44505339073](https://github.com/juw12/spry/actions/runs/44505339073), [44505350753](https://github.com/juw12/spry/actions/runs/44505350753)). Work is in steps per second.
 <!-- bench:end -->
 
-These runs were made with 0.2.0. Version 0.2.1 changed only how the page shows the app list, not
-how apps are held back; every later change is run through the same test again.
+These runs were made with the 0.3.0 code. The gain is measured against the same plain busy
+processes as in every earlier version, and with Strong mode off, which is how Spry now comes on
+every system.
 
 **The weak results, said plainly:**
 
-- On the Windows test machine with all 4 threads the gain is still the smallest (1.39x), because
-  Windows already gives the app in front most of what it needs. With Spry it reaches 99% of a quiet
-  machine.
-- On macOS a normal program cannot keep part of the processor free, so nothing changed there since
-  0.1.1; the difference in the table below is the spread between runs. Reactions on the two macOS
-  test machines were already short (about 5 ms) and did not get shorter.
+- On the Windows test machine with all 4 threads the gain is still the smallest (1.38x), because
+  Windows already gives the app in front most of what it needs. With Spry it reaches 100% of a quiet
+  machine. The gain there also depends on which processor the test machine happens to have: when
+  the released 0.2.1 and this version were measured in turns on the same six machines
+  ([run 44504694485](https://github.com/juw12/spry/actions/runs/44504694485), values in
+  `docs/bench/ab-0.2.1/`), both gave 1.26-1.30x on one processor model and 1.33-1.47x on the three
+  others, and on the same machine this version was never more than 0.03 below 0.2.1.
+- On macOS a normal program cannot keep part of the processor free, and how apps are held while
+  the app in front works has not changed since 0.1.1. On the Intel test machine the app in front
+  reaches 90% of a quiet machine, the lowest in the table, and the median gain is 2.12x where 0.2.0
+  measured 2.28x. The ranges overlap (1.90-2.55 now, 1.95-3.94 then) and these machines vary a lot
+  between runs, but unlike Windows this was not compared on the same machine, so a real drop is not
+  ruled out. Reactions on the two macOS test machines were already short (about 5 ms) and did not
+  get shorter.
+- After the app in front has rested, the hold is not back at once: 0.4 to 1.1 seconds on the test
+  machines (see the next section). An app in front that keeps using more than 5% of one processor
+  core while you only look at it (a video call, a page with moving pictures) never counts as
+  resting, so nothing is lent then.
 - The app in front in this test uses one processor thread. An app that uses all of them gains less:
   it has the kept-free threads to itself and shares the rest. That case is not measured yet.
 - The "2 threads only" rows are the same test machines limited to two threads. Nobody has measured
   Spry on a real old laptop yet.
 
-**Since 0.1.1**, same test machines, same load:
+**From version to version**, same test machines, same load, median gain:
 
 <!-- bench-change:start -->
-| System | Gain, 0.1.1 | Gain, now | Without pausing, 0.1.1 | Without pausing, now |
-|---|---|---|---|---|
-| Windows, x64 | 1.27x | 1.39x | 1.27x | 1.39x |
-| macOS 15, Apple silicon | 2.36x | 2.17x | 2.21x | 2.13x |
-| macOS 15, Intel | 2.14x | 2.50x | 2.10x | 2.28x |
-| Linux (Ubuntu), x64 | 2.28x | 2.37x | 1.09x | 2.36x |
+| System | 0.1.1 | 0.2.0 | 0.3.0 (now) | With pulses, 0.2.0 | With pulses, now |
+|---|---|---|---|---|---|
+| Windows, x64 | 1.27x | 1.39x | 1.38x | - | - |
+| macOS 15, Apple silicon | 2.21x | 2.13x | 2.15x | 2.17x | 2.16x |
+| macOS 15, Intel | 2.10x | 2.28x | 2.12x | 2.50x | 2.27x |
+| Linux (Ubuntu), x64 | 1.09x | 2.36x | 2.90x | 2.37x | 2.90x |
+| Windows, x64, on 2 threads only | - | 2.99x | 3.19x | - | - |
+| Linux (Ubuntu), x64, on 2 threads only | - | 2.53x | 2.59x | 2.56x | 2.60x |
+| Linux (Ubuntu), ARM64 | - | 2.07x | 2.78x | 2.09x | 2.78x |
+| Linux (Ubuntu), ARM64, on 2 threads only | - | 3.01x | 3.00x | 3.01x | 3.00x |
 <!-- bench-change:end -->
 
-"Without pausing" is easing only, with no process ever stopped. Version 0.1.1 had nothing on Linux
-that held the processor back without pausing apps (1.09x), and reached 92% of a quiet machine on
-Windows. Its reaction times (up to 126 ms on macOS) were mostly the test's own timer waking late on
-these virtual machines, so they are not compared here; this version times every reaction from a
-click sent by a second thread. The 0.1.1 results are kept in `docs/bench/v0.1/`.
+The first three columns are easing only, with no process ever stopped; the last two add the pulses
+of Strong mode. Version 0.1.1 had nothing on Linux that held the processor back without pausing
+apps (1.09x), and reached 92% of a quiet machine on Windows. Version 0.3.0 did not change how apps
+are held while the app in front works, so where its column differs from 0.2.0 (higher on Linux,
+lower on macOS Intel) that is the spread between runs and test machines, not a change in Spry. What
+0.3.0 changed is in the next section. The reaction times of 0.1.1 (up to 126 ms on macOS) were
+mostly the test's own timer waking late on these virtual machines, so they are not compared here;
+since 0.2.0 every reaction is timed from a click sent by a second thread. The earlier results are
+kept in `docs/bench/v0.1/` and `docs/bench/v0.2/`.
 
 - **Quiet** = nothing else running. **Busy, Spry off** = background processes take what they want.
   **Busy, Spry on** = the same load, held back by Spry as it comes, with no setting changed.
 - **With Strong mode**: the gain with pulses added (macOS and Linux). Since 0.3.0 Strong mode is off
   everywhere until you tick it, also on Linux: there the pulses added almost nothing for the app in
   front and cost the held apps a large part of their speed (see
-  [What it costs the apps that are held](#what-it-costs-the-apps-that-are-held)).
+  [What it costs the apps that are held](#what-it-costs-the-apps-that-are-held)). If you used an
+  earlier version, your saved settings are kept, so Strong mode stays on until you untick it.
 - **Kept free**: how many processor threads background apps stay off while the machine is under
   pressure (Windows and Linux; macOS gives a normal program no way to do this).
 - **Slowest 5% of reactions**: a second thread "clicks" 60 times a second; this is how long the app
@@ -102,6 +124,45 @@ click sent by a second thread. The 0.1.1 results are kept in `docs/bench/v0.1/`.
 
 On a busy machine it looks more often. One reading taken by hand, not from a linked run: on the
 author's Windows PC (8 cores, 370 processes, 75% busy) it used 7.7 MB and about 2% of one core.
+
+## What it costs the apps that are held
+
+Holding an app back means it gets less done. Up to 0.2 that was true all the time: a held app
+stayed held while you were reading or away, when nothing needed the processor. Since 0.3.0 the time
+is lent: while the app in front rests, the held apps run as if Spry were not there.
+
+Measured in the same runs as the table above, with a second set of busy background processes that
+count their own work. 100% is what they get done with Spry off.
+
+<!-- bench-cost:start -->
+| System | Front app works: held (lowest-highest) | Front app rests: held anyway (0.2) | The same with pulses (0.2 on Linux) | Front app rests: lent (now, lowest-highest) | Hold back after (slowest) |
+|---|---|---|---|---|---|
+| Windows, x64 | 57% (54-57) | 51% | not offered | **100%** (99-101) | 0.9 s (1.0 s) |
+| macOS 15, Apple silicon | 53% (3-76) | 62% | 27% | **99%** (96-106) | 1.0 s (1.1 s) |
+| macOS 15, Intel | 94% (81-99) | 95% | 35% | **100%** (97-102) | 0.4 s (0.5 s) |
+| Linux (Ubuntu), x64 | 54% (54-55) | 50% | 20% | **100%** (100-100) | 0.9 s (0.9 s) |
+| Windows, x64, on 2 threads only | 49% (47-62) | 50% | not offered | **100%** (98-100) | timed on all threads only |
+| Linux (Ubuntu), x64, on 2 threads only | 56% (56-59) | 50% | 20% | **100%** (100-101) | timed on all threads only |
+| Linux (Ubuntu), ARM64 | 82% (80-82) | 75% | 30% | **100%** (100-100) | 1.0 s (1.0 s) |
+| Linux (Ubuntu), ARM64, on 2 threads only | 57% (57-57) | 50% | 20% | **100%** (100-100) | timed on all threads only |
+<!-- bench-cost:end -->
+
+- **Front app works: held** is what the held apps still get done while the app in front is busy.
+  This part is the price of the gain and has not changed: the processor is finite, and while you
+  work the others wait.
+- **Front app rests: held anyway** is what they got up to 0.2 while the app in front did nothing,
+  and **the same with pulses** is what they got on Linux as 0.2 came, or anywhere with Strong mode
+  ticked. This is the time that was lost for nothing.
+- **Front app rests: lent** is what they get now.
+- **Hold back after** is how long after the app in front starts working again the others are held
+  again, timed in a test that runs the whole program (median, and the slowest of the five runs).
+  During that moment the app in front shares the processor as if Spry were off; on Windows the
+  others keep their lower priority throughout.
+
+Said plainly: on the macOS Apple silicon test machine the "front app works" figure went from 3% to
+76% between runs, so that row says little; the system's background state there can leave a held
+app almost nothing. And a rest only counts after 6 seconds below 5% of one processor core, so
+short pauses between keystrokes lend nothing.
 
 ## What it cannot do
 
@@ -241,8 +302,19 @@ Each promise above has a test with a name you can read, run on every change:
 | The page answers only with the token | `eases_shows_restores_and_rescues` (asks without and with a wrong token) in [tests/end_to_end.rs](https://github.com/juw12/spry/blob/main/tests/end_to_end.rs) |
 | Storage: looking removes nothing, and only caches, temporary files and the bin are looked at | `sweep_removes_only_old_files_and_keeps_the_root`, `only_folders_well_inside_home_or_temp_are_accepted`, `no_cleaning_folder_is_inside_your_own_files` in [src/clean.rs](https://github.com/juw12/spry/blob/main/src/clean.rs) |
 
-What went wrong along the way, so you can judge the testing: the seven CI runs behind the
-table all passed. Two of the seven runs of 0.1.1 failed a test on macOS Intel (one test expected one held process where Spry rightly held two;
+What went wrong along the way, so you can judge the testing: the five CI runs behind the
+table all passed, but getting there took several corrections in 0.3.0. A new test failed 2 of 13 times
+on macOS Intel; it was a real fault, not a shaky test: on macOS a process that had stopped
+completely kept showing its last reading, so Spry could go on thinking a resting app was working.
+After the fix the test passed 56 of 56 times. A second new test failed on Windows because the first
+reading of a process that has just appeared is always about 0 there; the test now skips it. The
+first way of measuring what the hold costs made the busy processes count their work, which changed
+the load itself; measuring the released 0.2.1 beside it on the same machines showed that, and the
+gain is now measured against the untouched processes with a separate counting set for the cost.
+The same comparison showed that the Windows gain depends on the test machine's processor model.
+One check of this run did not pass: the median gain of every row was to be at least the lowest
+0.2.0 run of that row, and "Linux, ARM64, on 2 threads only" gave 3.005x against 3.007x, a row
+where the app in front already runs at 100% of a quiet machine. Two of the seven runs of 0.1.1 failed a test on macOS Intel (one test expected one held process where Spry rightly held two;
 one measured a busy process while other tests ran beside it). Both were faults in the tests and are
 fixed. The reaction-time column of 0.1.1 measured the test's own timer more than Spry (see above).
 The install check also showed 0.1.0 easing two

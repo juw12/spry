@@ -1,0 +1,528 @@
+{
+ "run": "https://github.com/juw12/spry/actions/runs/44504694485",
+ "what": "Three builds measured in turns, three rounds each, on six Windows CI machines: old = the released 0.2.1 download, src = 0.2.1 built from source on the machine, new = commit 53f6760 (0.3.0).",
+ "jobs": [
+  {
+   "job": "ab (windows-latest, a)",
+   "processor": "INTEL(R) XEON(R) PLATINUM 8573C",
+   "rounds": [
+    {
+     "build": "new",
+     "round": 1,
+     "quiet": 253.89,
+     "busy": 184.21,
+     "eased": 251.51,
+     "gain": 1.37,
+     "p95": 4.7
+    },
+    {
+     "build": "old",
+     "round": 1,
+     "quiet": 253.31,
+     "busy": 183.82,
+     "eased": 250.93,
+     "gain": 1.37,
+     "p95": 8.38
+    },
+    {
+     "build": "src",
+     "round": 1,
+     "quiet": 251.79,
+     "busy": 182.5,
+     "eased": 248.61,
+     "gain": 1.36,
+     "p95": 16.1
+    },
+    {
+     "build": "new",
+     "round": 2,
+     "quiet": 250.97,
+     "busy": 181.28,
+     "eased": 248.47,
+     "gain": 1.37,
+     "p95": 10.59
+    },
+    {
+     "build": "old",
+     "round": 2,
+     "quiet": 251.58,
+     "busy": 182.38,
+     "eased": 249.3,
+     "gain": 1.37,
+     "p95": 12.37
+    },
+    {
+     "build": "src",
+     "round": 2,
+     "quiet": 251.38,
+     "busy": 180.44,
+     "eased": 251.02,
+     "gain": 1.39,
+     "p95": 6.41
+    },
+    {
+     "build": "new",
+     "round": 3,
+     "quiet": 252.51,
+     "busy": 184.96,
+     "eased": 251.31,
+     "gain": 1.36,
+     "p95": 14.4
+    },
+    {
+     "build": "old",
+     "round": 3,
+     "quiet": 255.18,
+     "busy": 186.1,
+     "eased": 254.95,
+     "gain": 1.37,
+     "p95": 8.15
+    },
+    {
+     "build": "src",
+     "round": 3,
+     "quiet": 251.29,
+     "busy": 179.92,
+     "eased": 250.09,
+     "gain": 1.39,
+     "p95": 10.3
+    }
+   ]
+  },
+  {
+   "job": "ab (windows-latest, b)",
+   "processor": "AMD EPYC 7763 64-Core Processor",
+   "rounds": [
+    {
+     "build": "new",
+     "round": 1,
+     "quiet": 252.56,
+     "busy": 175.73,
+     "eased": 249.67,
+     "gain": 1.42,
+     "p95": 13.26
+    },
+    {
+     "build": "old",
+     "round": 1,
+     "quiet": 250.57,
+     "busy": 180.98,
+     "eased": 249.97,
+     "gain": 1.38,
+     "p95": 10.61
+    },
+    {
+     "build": "src",
+     "round": 1,
+     "quiet": 251.65,
+     "busy": 179.4,
+     "eased": 250.78,
+     "gain": 1.4,
+     "p95": 8.41
+    },
+    {
+     "build": "new",
+     "round": 2,
+     "quiet": 251.25,
+     "busy": 173.14,
+     "eased": 250.44,
+     "gain": 1.45,
+     "p95": 10.93
+    },
+    {
+     "build": "old",
+     "round": 2,
+     "quiet": 251.01,
+     "busy": 180.16,
+     "eased": 249.48,
+     "gain": 1.38,
+     "p95": 10.41
+    },
+    {
+     "build": "src",
+     "round": 2,
+     "quiet": 250.89,
+     "busy": 179.37,
+     "eased": 249.69,
+     "gain": 1.39,
+     "p95": 10.73
+    },
+    {
+     "build": "new",
+     "round": 3,
+     "quiet": 253.43,
+     "busy": 177.68,
+     "eased": 253.02,
+     "gain": 1.42,
+     "p95": 14.87
+    },
+    {
+     "build": "old",
+     "round": 3,
+     "quiet": 251.33,
+     "busy": 180.33,
+     "eased": 249.8,
+     "gain": 1.39,
+     "p95": 12.39
+    },
+    {
+     "build": "src",
+     "round": 3,
+     "quiet": 251.46,
+     "busy": 182.92,
+     "eased": 250.18,
+     "gain": 1.37,
+     "p95": 19.89
+    }
+   ]
+  },
+  {
+   "job": "ab (windows-latest, c)",
+   "processor": "AMD EPYC 9V74 80-Core Processor",
+   "rounds": [
+    {
+     "build": "new",
+     "round": 1,
+     "quiet": 252.76,
+     "busy": 189.41,
+     "eased": 252.31,
+     "gain": 1.33,
+     "p95": 8.48
+    },
+    {
+     "build": "old",
+     "round": 1,
+     "quiet": 253.31,
+     "busy": 187.77,
+     "eased": 252.82,
+     "gain": 1.35,
+     "p95": 16.51
+    },
+    {
+     "build": "src",
+     "round": 1,
+     "quiet": 252.34,
+     "busy": 185.83,
+     "eased": 251.45,
+     "gain": 1.35,
+     "p95": 10.52
+    },
+    {
+     "build": "new",
+     "round": 2,
+     "quiet": 254.34,
+     "busy": 183.94,
+     "eased": 252.95,
+     "gain": 1.38,
+     "p95": 10.11
+    },
+    {
+     "build": "old",
+     "round": 2,
+     "quiet": 255.18,
+     "busy": 187.22,
+     "eased": 254.3,
+     "gain": 1.36,
+     "p95": 14.47
+    },
+    {
+     "build": "src",
+     "round": 2,
+     "quiet": 256.27,
+     "busy": 185.45,
+     "eased": 255.29,
+     "gain": 1.38,
+     "p95": 6.99
+    },
+    {
+     "build": "new",
+     "round": 3,
+     "quiet": 255.36,
+     "busy": 186.57,
+     "eased": 255.56,
+     "gain": 1.37,
+     "p95": 10.23
+    },
+    {
+     "build": "old",
+     "round": 3,
+     "quiet": 252.35,
+     "busy": 185.4,
+     "eased": 251.28,
+     "gain": 1.36,
+     "p95": 6.32
+    },
+    {
+     "build": "src",
+     "round": 3,
+     "quiet": 258.13,
+     "busy": 187.7,
+     "eased": 257.97,
+     "gain": 1.37,
+     "p95": 12.62
+    }
+   ]
+  },
+  {
+   "job": "ab (windows-latest, d)",
+   "processor": "AMD EPYC 9V45 96-Core Processor",
+   "rounds": [
+    {
+     "build": "new",
+     "round": 1,
+     "quiet": 254.0,
+     "busy": 199.19,
+     "eased": 253.47,
+     "gain": 1.27,
+     "p95": 6.65
+    },
+    {
+     "build": "old",
+     "round": 1,
+     "quiet": 257.69,
+     "busy": 199.43,
+     "eased": 256.58,
+     "gain": 1.29,
+     "p95": 5.35
+    },
+    {
+     "build": "src",
+     "round": 1,
+     "quiet": 246.73,
+     "busy": 193.5,
+     "eased": 251.15,
+     "gain": 1.3,
+     "p95": 7.54
+    },
+    {
+     "build": "new",
+     "round": 2,
+     "quiet": 254.09,
+     "busy": 195.97,
+     "eased": 253.9,
+     "gain": 1.3,
+     "p95": 6.63
+    },
+    {
+     "build": "old",
+     "round": 2,
+     "quiet": 250.5,
+     "busy": 196.42,
+     "eased": 248.26,
+     "gain": 1.26,
+     "p95": 6.41
+    },
+    {
+     "build": "src",
+     "round": 2,
+     "quiet": 259.71,
+     "busy": 204.25,
+     "eased": 256.11,
+     "gain": 1.25,
+     "p95": 5.54
+    },
+    {
+     "build": "new",
+     "round": 3,
+     "quiet": 249.55,
+     "busy": 197.69,
+     "eased": 249.23,
+     "gain": 1.26,
+     "p95": 7.89
+    },
+    {
+     "build": "old",
+     "round": 3,
+     "quiet": 254.36,
+     "busy": 194.48,
+     "eased": 250.85,
+     "gain": 1.29,
+     "p95": 12.48
+    },
+    {
+     "build": "src",
+     "round": 3,
+     "quiet": 244.49,
+     "busy": 190.17,
+     "eased": 241.15,
+     "gain": 1.27,
+     "p95": 8.96
+    }
+   ]
+  },
+  {
+   "job": "ab (windows-latest, e)",
+   "processor": "AMD EPYC 7763 64-Core Processor",
+   "rounds": [
+    {
+     "build": "new",
+     "round": 1,
+     "quiet": 253.86,
+     "busy": 176.44,
+     "eased": 253.83,
+     "gain": 1.44,
+     "p95": 17.52
+    },
+    {
+     "build": "old",
+     "round": 1,
+     "quiet": 252.8,
+     "busy": 182.76,
+     "eased": 251.02,
+     "gain": 1.37,
+     "p95": 12.56
+    },
+    {
+     "build": "src",
+     "round": 1,
+     "quiet": 250.74,
+     "busy": 177.5,
+     "eased": 248.72,
+     "gain": 1.4,
+     "p95": 14.46
+    },
+    {
+     "build": "new",
+     "round": 2,
+     "quiet": 255.41,
+     "busy": 173.66,
+     "eased": 254.77,
+     "gain": 1.47,
+     "p95": 11.69
+    },
+    {
+     "build": "old",
+     "round": 2,
+     "quiet": 255.68,
+     "busy": 186.81,
+     "eased": 254.87,
+     "gain": 1.36,
+     "p95": 13.56
+    },
+    {
+     "build": "src",
+     "round": 2,
+     "quiet": 252.47,
+     "busy": 183.3,
+     "eased": 252.04,
+     "gain": 1.38,
+     "p95": 14.19
+    },
+    {
+     "build": "new",
+     "round": 3,
+     "quiet": 251.1,
+     "busy": 170.49,
+     "eased": 250.34,
+     "gain": 1.47,
+     "p95": 11.49
+    },
+    {
+     "build": "old",
+     "round": 3,
+     "quiet": 252.25,
+     "busy": 181.95,
+     "eased": 252.11,
+     "gain": 1.39,
+     "p95": 8.63
+    },
+    {
+     "build": "src",
+     "round": 3,
+     "quiet": 255.07,
+     "busy": 100.95,
+     "eased": 246.16,
+     "gain": 2.44,
+     "p95": 44.16
+    }
+   ]
+  },
+  {
+   "job": "ab (windows-latest, f)",
+   "processor": "AMD EPYC 9V45 96-Core Processor",
+   "rounds": [
+    {
+     "build": "new",
+     "round": 1,
+     "quiet": 250.29,
+     "busy": 196.44,
+     "eased": 250.46,
+     "gain": 1.27,
+     "p95": 8.06
+    },
+    {
+     "build": "old",
+     "round": 1,
+     "quiet": 255.92,
+     "busy": 200.91,
+     "eased": 255.81,
+     "gain": 1.27,
+     "p95": 7.12
+    },
+    {
+     "build": "src",
+     "round": 1,
+     "quiet": 253.97,
+     "busy": 197.74,
+     "eased": 252.69,
+     "gain": 1.28,
+     "p95": 4.24
+    },
+    {
+     "build": "new",
+     "round": 2,
+     "quiet": 251.71,
+     "busy": 196.46,
+     "eased": 251.47,
+     "gain": 1.28,
+     "p95": 5.91
+    },
+    {
+     "build": "old",
+     "round": 2,
+     "quiet": 251.61,
+     "busy": 196.21,
+     "eased": 251.21,
+     "gain": 1.28,
+     "p95": 4.63
+    },
+    {
+     "build": "src",
+     "round": 2,
+     "quiet": 251.14,
+     "busy": 196.89,
+     "eased": 250.91,
+     "gain": 1.27,
+     "p95": 6.18
+    },
+    {
+     "build": "new",
+     "round": 3,
+     "quiet": 251.81,
+     "busy": 194.16,
+     "eased": 250.7,
+     "gain": 1.29,
+     "p95": 4.41
+    },
+    {
+     "build": "old",
+     "round": 3,
+     "quiet": 251.28,
+     "busy": 193.93,
+     "eased": 251.41,
+     "gain": 1.3,
+     "p95": 10.17
+    },
+    {
+     "build": "src",
+     "round": 3,
+     "quiet": 251.37,
+     "busy": 194.79,
+     "eased": 251.16,
+     "gain": 1.29,
+     "p95": 10.12
+    }
+   ]
+  }
+ ]
+}
