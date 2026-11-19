@@ -1,0 +1,67 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            asset: spry-windows-x64.zip
+          - os: macos-15
+            asset: spry-macos-universal.tar.gz
+          - os: ubuntu-latest
+            asset: spry-linux-x64.tar.gz
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          RUSTFLAGS: -C target-feature=+crt-static
+        run: |
+          cargo build --release
+          Compress-Archive -Path target/release/spry.exe -DestinationPath ${{ matrix.asset }}
+
+      - name: Build (macOS, Intel and Apple silicon in one file)
+        if: runner.os == 'macOS'
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "10.13"
+        run: |
+          rustup target add x86_64-apple-darwin aarch64-apple-darwin
+          cargo build --release --target x86_64-apple-darwin
+          cargo build --release --target aarch64-apple-darwin
+          lipo -create -output spry target/x86_64-apple-darwin/release/spry target/aarch64-apple-darwin/release/spry
+          codesign --force --sign - spry
+          lipo -info spry
+          ./spry version
+          tar -czf ${{ matrix.asset }} spry
+
+      - name: Build (Linux, runs on any distribution)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update && sudo apt-get install -y musl-tools
+          rustup target add x86_64-unknown-linux-musl
+          cargo build --release --target x86_64-unknown-linux-musl
+          cp target/x86_64-unknown-linux-musl/release/spry spry
+          ./spry version
+          tar -czf ${{ matrix.asset }} spry
+
+      - name: Publish
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "${{ github.ref_name }}" >/dev/null 2>&1 || gh release create "${{ github.ref_name }}" --title "Spry ${{ github.ref_name }}" --generate-notes
+          gh release upload "${{ github.ref_name }}" "${{ matrix.asset }}" --clobber

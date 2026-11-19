@@ -1,0 +1,48 @@
+[package]
+name = "spry"
+version = "0.1.0"
+edition = "2024"
+description = "Keeps an old computer quick: holds back background apps so the one you are using gets the machine."
+license = "MIT"
+repository = "https://github.com/juw12/spry"
+
+[dependencies]
+ctrlc = { version = "3.5.3", features = ["termination"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sysinfo = { version = "0.40.4", default-features = false, features = ["system", "disk", "user"] }
+tiny_http = "0.12.0"
+
+[target."cfg(unix)".dependencies]
+libc = "0.2.191"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+x11rb = "0.14.0"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6.5"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "libc", "NSWorkspace", "NSRunningApplication"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSRunLoop", "NSDate"] }
+
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
+tao = "0.37.3"
+tray-icon = "0.26.1"
+
+[target."cfg(windows)".dependencies]
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Console",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Shell",
+] }
+
+[target."cfg(windows)".build-dependencies]
+winresource = "0.1"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
