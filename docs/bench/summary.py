@@ -1,7 +1,7 @@
 """Builds the measurement table in README.md from the CI results kept in docs/bench/.
 
-Each folder docs/bench/run-<id>/ holds what `spry bench --secs 4 --json` printed on the four
-GitHub-hosted runners in CI run <id>. The table shows the median over all kept runs and the
+Each folder docs/bench/run-<id>/ holds what `spry bench --secs 4 --json` printed on the
+GitHub-hosted runners in CI run <id> (and again with `--threads 2` where the system allows it). The table shows the median over all kept runs and the
 lowest and highest gain seen, so nothing in the README is typed by hand. The folder v0.1/ holds
 the runs of version 0.1.1, which had no kept-free processor threads and timed reactions from a
 timer; they are shown next to the current ones, never mixed with them.
@@ -22,6 +22,8 @@ NAMES = {
     "ubuntu-latest": "Linux (Ubuntu), x64",
     "windows-latest-2threads": "Windows, x64, on 2 threads only",
     "ubuntu-latest-2threads": "Linux (Ubuntu), x64, on 2 threads only",
+    "ubuntu-24.04-arm": "Linux (Ubuntu), ARM64",
+    "ubuntu-24.04-arm-2threads": "Linux (Ubuntu), ARM64, on 2 threads only",
 }
 CHANGE_START, CHANGE_END = "<!-- bench-change:start -->", "<!-- bench-change:end -->"
 BEFORE = HERE / "v0.1"
@@ -52,7 +54,7 @@ def row(name, results):
     cores = results[0]["cores"]
     kept = results[0].get("kept_free", 0)
     return (
-        f"| {NAMES.get(name, name)} | {cores} | {kept or 'none'} | {quiet:.0f} | {busy:.0f} | {with_spry:.0f} "
+        f"| {NAMES.get(name, name)} | {len(results)} | {cores} | {kept or 'none'} | {quiet:.0f} | {busy:.0f} | {with_spry:.0f} "
         f"| **{med(gains):.2f}x** ({min(gains):.2f}-{max(gains):.2f}) | {100 * of_quiet:.0f}% "
         f"| {eased_gain:.2f}x | {(f'{med(pulsed):.2f}x' if pulsed else 'not used')} "
         f"| {p95_off:.1f} -> {p95_on:.1f} ms |"
@@ -61,16 +63,15 @@ def row(name, results):
 
 def table():
     runs = load()
-    count = max(len(v) for v in runs.values())
     lines = [
-        "| System | Threads | Kept free | Quiet | Busy, Spry off | Busy, Spry on | Gain (lowest-highest) | Of quiet speed | Easing only | With pulses | Slowest 5% of reactions, off -> on |",
-        "|---|---|---|---|---|---|---|---|---|---|---|",
+        "| System | Runs | Threads | Kept free | Quiet | Busy, Spry off | Busy, Spry on | Gain (lowest-highest) | Of quiet speed | Easing only | With pulses | Slowest 5% of reactions, off -> on |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     lines += [row(name, runs[name]) for name in NAMES if name in runs]
     ids = sorted({p.parent.name.removeprefix("run-") for p in HERE.glob("run-*/*.json")})
     links = ", ".join(f"[{i}](https://github.com/juw12/spry/actions/runs/{i})" for i in ids)
     lines.append("")
-    lines.append(f"Median of {count} CI run{'s' if count != 1 else ''} ({links}). Work is in steps per second.")
+    lines.append(f"Each row is the median over its CI runs ({links}). Work is in steps per second.")
     return "\n".join(lines)
 
 

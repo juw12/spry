@@ -1,0 +1,28 @@
+{
+  "os": "linux",
+  "cores": 4,
+  "burners": 8,
+  "kept_free": 1,
+  "secs": 4.0,
+  "quiet": {
+    "work": 249.98306239760728,
+    "p50_ms": 4.013135,
+    "p95_ms": 4.117552
+  },
+  "busy": {
+    "work": 123.27851479998672,
+    "p50_ms": 8.015485,
+    "p95_ms": 8.941212
+  },
+  "eased": {
+    "work": 244.6883534127409,
+    "p50_ms": 4.003863,
+    "p95_ms": 4.088945
+  },
+  "pulsed": {
+    "work": 249.87379374425566,
+    "p50_ms": 4.014934,
+    "p95_ms": 4.118137
+  },
+  "ease_text": "idle disk priority; under pressure part of the processor is kept free, plus short pause-and-resume pulses"
+}

@@ -20,30 +20,64 @@ follows your system's light or dark setting and fits a small window:</sub>
 ## What you get
 
 Measured by the program itself (`spry bench`) on GitHub's test machines, which have 3 or 4 processor
-cores like many older laptops. The test starts twice as many busy background processes as the
-machine has cores, then measures how much work the app in front gets done.
+threads like many older laptops. The test starts twice as many busy background processes as the
+machine has threads, then measures how much work the app in front gets done and how fast it reacts
+to a click. On Windows and Linux the test is repeated with only 2 threads allowed, as a stand-in for
+a smaller machine.
 
 <!-- bench:start -->
-| System | Cores | Quiet | Busy, Spry off | Busy, Spry on | Gain (lowest-highest) | Of quiet speed | Easing only | With pulses | Slowest 5% of steps, off -> on |
-|---|---|---|---|---|---|---|---|---|---|
-| Windows, x64 | 4 | 250 | 182 | 230 | **1.27x** (1.25-1.29) | 92% | 1.27x | not used | 20.0 -> 4.9 ms |
-| macOS 15, Apple silicon | 3 | 240 | 101 | 246 | **2.36x** (2.13-2.95) | 103% | 2.21x | 2.36x | 68.3 -> 73.5 ms |
-| macOS 15, Intel | 4 | 250 | 119 | 243 | **2.14x** (1.90-2.96) | 100% | 2.10x | 2.14x | 126.3 -> 109.0 ms |
-| Linux (Ubuntu), x64 | 4 | 252 | 89 | 218 | **2.28x** (1.83-2.88) | 87% | 1.09x | 2.28x | 14.7 -> 12.5 ms |
+| System | Runs | Threads | Kept free | Quiet | Busy, Spry off | Busy, Spry on | Gain (lowest-highest) | Of quiet speed | Easing only | With pulses | Slowest 5% of reactions, off -> on |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Windows, x64 | 7 | 4 | 2 | 254 | 183 | 251 | **1.39x** (1.30-1.43) | 99% | 1.39x | not used | 9.7 -> 4.2 ms |
+| macOS 15, Apple silicon | 7 | 3 | none | 255 | 120 | 265 | **2.17x** (1.87-2.38) | 101% | 2.13x | 2.17x | 4.4 -> 5.6 ms |
+| macOS 15, Intel | 7 | 4 | none | 251 | 105 | 236 | **2.50x** (2.12-3.95) | 97% | 2.28x | 2.50x | 4.8 -> 4.8 ms |
+| Linux (Ubuntu), x64 | 7 | 4 | 2 | 252 | 108 | 255 | **2.37x** (2.07-3.23) | 100% | 2.36x | 2.37x | 13.0 -> 4.0 ms |
+| Windows, x64, on 2 threads only | 7 | 2 | 1 | 253 | 78 | 232 | **2.99x** (2.82-3.92) | 92% | 2.99x | not used | 4.4 -> 4.1 ms |
+| Linux (Ubuntu), x64, on 2 threads only | 7 | 2 | 1 | 252 | 95 | 246 | **2.57x** (2.38-2.72) | 98% | 2.53x | 2.56x | 13.9 -> 4.3 ms |
+| Linux (Ubuntu), ARM64 | 3 | 4 | 1 | 250 | 120 | 250 | **2.09x** (2.03-2.93) | 100% | 2.07x | 2.09x | 9.0 -> 4.1 ms |
+| Linux (Ubuntu), ARM64, on 2 threads only | 3 | 2 | 1 | 250 | 83 | 250 | **3.01x** (3.01-3.02) | 100% | 3.01x | 3.01x | 14.0 -> 4.0 ms |
 
-Median of 7 CI runs ([44464015119](https://github.com/juw12/spry/actions/runs/44464015119), [44464540756](https://github.com/juw12/spry/actions/runs/44464540756), [44465145704](https://github.com/juw12/spry/actions/runs/44465145704), [44465559716](https://github.com/juw12/spry/actions/runs/44465559716), [44466630805](https://github.com/juw12/spry/actions/runs/44466630805), [44466748192](https://github.com/juw12/spry/actions/runs/44466748192), [44467659332](https://github.com/juw12/spry/actions/runs/44467659332)). Work is in steps per second.
+Each row is the median over its CI runs ([44474422105](https://github.com/juw12/spry/actions/runs/44474422105), [44474434150](https://github.com/juw12/spry/actions/runs/44474434150), [44474443552](https://github.com/juw12/spry/actions/runs/44474443552), [44474454792](https://github.com/juw12/spry/actions/runs/44474454792), [44475427485](https://github.com/juw12/spry/actions/runs/44475427485), [44475438324](https://github.com/juw12/spry/actions/runs/44475438324), [44475449180](https://github.com/juw12/spry/actions/runs/44475449180)). Work is in steps per second.
 <!-- bench:end -->
 
-**The weak results, said plainly:** on the Windows test machine the gain is small (about a quarter), because
-Windows already gave the app in front most of what it needed there; what improved is the reaction
-time (the last column). On Linux, easing alone does almost nothing for the processor; the gain comes
-from pulses. On the two macOS test machines the reaction time did not clearly improve; the amount of work did.
+**The weak results, said plainly:**
+
+- On the Windows test machine with all 4 threads the gain is still the smallest (1.39x), because
+  Windows already gives the app in front most of what it needs. With Spry it reaches 99% of a quiet
+  machine.
+- On macOS a normal program cannot keep part of the processor free, so nothing changed there since
+  0.1.1; the difference in the table below is the spread between runs. Reactions on the two macOS
+  test machines were already short (about 5 ms) and did not get shorter.
+- The app in front in this test uses one processor thread. An app that uses all of them gains less:
+  it has the kept-free threads to itself and shares the rest. That case is not measured yet.
+- The "2 threads only" rows are the same test machines limited to two threads. Nobody has measured
+  Spry on a real old laptop yet.
+
+**Since 0.1.1**, same test machines, same load:
+
+<!-- bench-change:start -->
+| System | Gain, 0.1.1 | Gain, now | Without pausing, 0.1.1 | Without pausing, now |
+|---|---|---|---|---|
+| Windows, x64 | 1.27x | 1.39x | 1.27x | 1.39x |
+| macOS 15, Apple silicon | 2.36x | 2.17x | 2.21x | 2.13x |
+| macOS 15, Intel | 2.14x | 2.50x | 2.10x | 2.28x |
+| Linux (Ubuntu), x64 | 2.28x | 2.37x | 1.09x | 2.36x |
+<!-- bench-change:end -->
+
+"Without pausing" is easing only, with no process ever stopped. Version 0.1.1 had nothing on Linux
+that held the processor back without pausing apps (1.09x), and reached 92% of a quiet machine on
+Windows. Its reaction times (up to 126 ms on macOS) were mostly the test's own timer waking late on
+these virtual machines, so they are not compared here; this version times every reaction from a
+click sent by a second thread. The 0.1.1 results are kept in `docs/bench/v0.1/`.
 
 - **Quiet** = nothing else running. **Busy, Spry off** = background processes take what they want.
   **Busy, Spry on** = the same load, held back by Spry (the better of "easing only" and "with pulses").
 - **Easing only** is the default on Windows and macOS. **With pulses** is "Strong mode": the default on
   Linux, one tick on the page elsewhere.
-- **Slowest 5% of steps**: how long a short piece of work takes after a pause, like reacting to a click.
+- **Kept free**: how many processor threads background apps stay off while the machine is under
+  pressure (Windows and Linux; macOS gives a normal program no way to do this).
+- **Slowest 5% of reactions**: a second thread "clicks" 60 times a second; this is how long the app
+  in front takes to answer, for the slowest twentieth of the clicks.
 - These are shared virtual machines and the numbers move between runs, which is why the lowest and
   highest gain are shown. Your computer will differ, so measure it: press **Measure now** on the page
   (20 seconds), or run `spry bench`.
@@ -68,7 +102,10 @@ it used 7.7 MB and about 2% of one core.
 - If the app in front is slow by itself with nothing else running, Spry changes nothing.
 - A computer that is out of memory stays out of memory. On Windows, Spry can ask large background
   apps to give back memory they are not using; on macOS and Linux the system does not offer that.
-- The downloads are not signed yet, so Windows and macOS warn on first start (see Install).
+- While the machine is under pressure, background apps on Windows and Linux run on fewer processor
+  threads (on a 4-thread machine: 2), so they take longer. That is the price of the gain above.
+- The downloads are not signed yet, so Windows and macOS warn on first start (see Install). They
+  can be checked another way: see "Check a download" under Install.
 
 ## Install
 
@@ -88,9 +125,14 @@ curl -fsSL https://raw.githubusercontent.com/juw12/spry/main/install.sh | sh
 This is the easy way on a Mac: a download through the browser is blocked by macOS until you allow it
 in System Settings > Privacy & Security, because Spry is not signed by Apple yet.
 
-**Linux** (x64): the same line as macOS. Spry needs X11 to see which app is in front. On Wayland
-(the default on current Ubuntu and Fedora) it cannot see that, and only follows the rules you set
-on its page, so it helps less there.
+**Linux** (x64 and ARM64): the same line as macOS. Spry has to see which app is in front:
+
+| Desktop | Does Spry see the app in front? |
+|---|---|
+| Any desktop on X11 | Yes. |
+| Wayland with sway | Yes, tested on every change. |
+| Wayland with Hyprland or niri | Written from their documentation, not yet tried on a real session. `spry front` tells you. |
+| Wayland with GNOME or KDE (the default on current Ubuntu and Fedora) | No: these desktops do not tell other programs. Spry then only follows the rules you set on its page, so it helps less there. |
 
 **After the first start** Spry opens its page in your browser and works at once, with no settings.
 It sits in the tray (Windows) or the menu bar (macOS); on Linux, run `spry open` for the page.
@@ -102,6 +144,20 @@ settings folder.
 
 People who prefer a terminal on Windows: `irm https://raw.githubusercontent.com/juw12/spry/main/install.ps1 | iex`
 
+**Check a download.** Every file on the [release page](https://github.com/juw12/spry/releases/latest)
+has its SHA-256 checksum next to it (`<file>.sha256`). The install lines above compare the two and
+install nothing when they differ. Each file also has a build record, signed by GitHub, that says
+which source commit and which workflow produced it. With the
+[GitHub command line tool](https://cli.github.com/):
+
+```sh
+gh attestation verify spry-linux-x64.tar.gz -R juw12/spry
+```
+
+This shows the file was built from this repository's source by its release workflow, and not
+changed afterwards. It is not the same as a signature from Microsoft's or Apple's programmes, so the
+first-start warnings on Windows and macOS remain.
+
 ## How it works
 
 Every half second Spry asks the system which app is in front. Every two seconds (every five while
@@ -112,8 +168,10 @@ the computer is calm) it measures all running apps.
 - An app you just left keeps full speed for 10 seconds.
 - A background app that uses more than 10% of one processor core is **eased**: it only gets the
   processor when the app in front does not need it.
-- When the whole processor is above 80% for 4 seconds, easing goes deeper, and Strong mode also
-  **pulses** the heaviest background processes (120 ms paused, 80 ms running).
+- When the whole processor is above 80% for 4 seconds, easing goes deeper. On Windows and Linux,
+  eased apps then stay off part of the processor (about a quarter of the threads, in whole cores,
+  never more than half), so the app in front always finds a free one. Strong mode also **pulses**
+  the heaviest background processes (120 ms paused, 80 ms running).
 - You can set a rule per app: never slow, always slow in the background, or **freeze** in the
   background (fully paused until you switch back to it).
 - Calls, music, recording and the desktop are on a built-in "never touched" list, and every program
@@ -123,9 +181,9 @@ What "eased" means on each system:
 
 | System | Eased | Notes |
 |---|---|---|
-| Windows 10/11 | Lower priority class. Under pressure also Efficiency mode and low memory priority. | Also releases unused memory of large background apps when memory runs low. |
+| Windows 10/11 | Lower priority class. Under pressure also Efficiency mode, low memory priority, and part of the processor kept free. | Also releases unused memory of large background apps when memory runs low. An app that picked its own processor threads keeps them. |
 | macOS 11+ | The system's background state (what `taskpolicy -b` sets): lowest processor priority, throttled disk. | Apple silicon and Intel. |
-| Linux | Idle disk priority, and pulses under pressure. | A normal user cannot raise a priority again after lowering it, so Spry does not lower it. Needs X11 to see the app in front; on Wayland Spry only follows the rules you set. |
+| Linux | Idle disk priority. Under pressure part of the processor is kept free, plus pulses. | A normal user cannot raise a priority again after lowering it, so Spry does not lower it; which threads an app may use can be put back, so Spry uses that, and gives every thread back exactly what it had. |
 
 ## Safety
 
@@ -133,7 +191,8 @@ What "eased" means on each system:
   process looked like before, and restores exactly that.
 - If Spry is killed or the computer crashes, the list of held processes is on disk: the next start,
   or `spry rescue`, puts them back. A frozen app is resumed the same way.
-- If an app changes its own priority (browsers do this for their tabs), Spry leaves that app alone.
+- If an app changes its own priority (browsers do this for their tabs) or picks its own processor
+  threads while Spry holds it, Spry leaves that choice alone and does not undo it.
 - The system is left alone twice over: Spry runs without administrator rights, so it cannot reach
   system services or other users' apps; and it skips every program that lives in a system folder
   (`C:\Windows`, `/System`, `/usr/libexec` and the like) as well as a built-in list of desktop,
@@ -143,16 +202,20 @@ What "eased" means on each system:
 - Storage cleaning shows what it found and removes nothing until you choose. It only looks at
   caches, temporary files and the bin, never at documents, downloads or app data.
 
-This is tested on every change, on Windows, macOS (Apple silicon and Intel) and Linux
-([CI](https://github.com/juw12/spry/actions/workflows/ci.yml)): a real busy process is eased,
-paused, frozen, and put back; Spry is killed and `spry rescue` puts the process back. A second check
-([install](https://github.com/juw12/spry/actions/workflows/install.yml)) runs the install steps from
-this page on each system and confirms the installed Spry starts and answers.
+This is tested on every change, on Windows, macOS (Apple silicon and Intel) and Linux (x64 and
+ARM64) ([CI](https://github.com/juw12/spry/actions/workflows/ci.yml)): a real busy process is eased,
+paused, frozen, kept off part of the processor, and put back; Spry is killed and `spry rescue` puts
+the process back; on Linux, a process that picks its own processor threads while held keeps them.
+A second check ([install](https://github.com/juw12/spry/actions/workflows/install.yml)) runs the
+install steps from this page on each system, confirms the installed Spry starts and answers, feeds
+the installer a changed download and confirms it is refused, and verifies the build record of every
+download.
 
-What went wrong along the way, so you can judge the testing: two of the seven CI runs in the table
-above failed a test on macOS Intel (one test expected one held process where Spry rightly held two;
+What went wrong along the way, so you can judge the testing: the seven CI runs behind this
+version's table all passed. Two of the seven runs of 0.1.1 failed a test on macOS Intel (one test expected one held process where Spry rightly held two;
 one measured a busy process while other tests ran beside it). Both were faults in the tests and are
-fixed; their measurements are kept in the table. The install check also showed 0.1.0 easing two
+fixed. The reaction-time column of 0.1.1 measured the test's own timer more than Spry (see above).
+The install check also showed 0.1.0 easing two
 macOS system helpers it did not know by name. That was put back as always, and 0.1.1 skips every
 program in a system folder.
 
@@ -166,7 +229,10 @@ spry bench        measure the effect on this computer (about 20 seconds)
 spry clean        show what storage can be cleared; add --yes to clear it
 spry install      start Spry when you sign in      (spry uninstall undoes it)
 spry rescue       put processes back after a crash
+spry front        show the process id of the app in front (checks that Spry can see it)
 ```
+
+`spry bench --threads 2` runs the measurement on two processor threads only (Windows and Linux).
 
 On Windows, Spry is a windowed program, so in a terminal add `| more` to read the output of
 `spry status` or `spry bench`.

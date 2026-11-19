@@ -1,0 +1,24 @@
+{
+  "os": "windows",
+  "cores": 2,
+  "burners": 4,
+  "kept_free": 1,
+  "secs": 4.0,
+  "quiet": {
+    "work": 254.1662923664375,
+    "p50_ms": 3.9632,
+    "p95_ms": 4.1633
+  },
+  "busy": {
+    "work": 59.40996123325295,
+    "p50_ms": 4.2755,
+    "p95_ms": 4.3605
+  },
+  "eased": {
+    "work": 232.70718454968116,
+    "p50_ms": 3.9404000000000003,
+    "p95_ms": 3.9706
+  },
+  "pulsed": null,
+  "ease_text": "lower priority; under pressure also Efficiency mode, low memory priority and part of the processor kept free"
+}
