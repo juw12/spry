@@ -3,9 +3,11 @@
 
 use crate::engine::Pulse;
 use crate::platform::{self, Hold, Saved};
+use memmap2::MmapMut;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
@@ -128,47 +130,67 @@ fn measure(n: u64, secs: f64) -> Phase {
     Phase { work, p50_ms: at(0.5), p95_ms: at(0.95) }
 }
 
+/// A count of steps that a busy process and the measuring process share: a small file that
+/// both map into memory. Noting a step is one store into memory, with no call into the system,
+/// so a process that counts is the same load as one that only computes. (Writing the count to
+/// a file was not: against such processes the app in front on Windows got about half of a quiet
+/// machine's speed with Spry off, not the 72% it gets against processes that only compute.)
+struct Count {
+    cell: *const AtomicU64,
+    _map: MmapMut,
+}
+
+impl Count {
+    fn open(path: &Path, create: bool) -> std::io::Result<Self> {
+        let file = std::fs::OpenOptions::new().read(true).write(true).create(create).truncate(create).open(path)?;
+        if create {
+            file.set_len(8)?;
+        }
+        // SAFETY: the file belongs to this measurement alone and is only used through `cell`.
+        let mut map = unsafe { MmapMut::map_mut(&file) }?;
+        if map.len() < 8 {
+            return Err(std::io::Error::other("the step count file is too short"));
+        }
+        Ok(Count { cell: map.as_mut_ptr().cast::<AtomicU64>(), _map: map })
+    }
+
+    fn cell(&self) -> &AtomicU64 {
+        // SAFETY: a mapping starts on a page boundary (aligned for a u64), is at least 8 bytes
+        // long, lives as long as `self`, and both processes touch it only as this one atomic.
+        unsafe { &*self.cell }
+    }
+}
+
 /// A process that only burns CPU. Stops by itself, so none is ever left behind for long.
-/// With a file to write to, it notes there how many steps it has done, about 40 times a second.
+/// With a count to share, it notes there how many steps it has done.
 pub fn burn(secs: u64, note: Option<&Path>) {
-    use std::io::{Seek, SeekFrom, Write};
     let t = Instant::now();
-    // The note stays open and is written over in place: one small write that never waits.
-    // (Creating the file anew each time made the process wait for the disk 40 times a second,
-    // and a process that waits is treated differently from one that only computes.)
-    let mut note = note.and_then(|path| std::fs::File::create(path).ok());
-    let (mut steps, mut noted) = (0u64, Instant::now());
+    let count = note.and_then(|path| Count::open(path, false).ok());
+    let mut steps = 0u64;
     while t.elapsed().as_secs() < secs {
         chunk(2_000_000);
         steps += 1;
-        if let Some(file) = &mut note
-            && noted.elapsed() >= Duration::from_millis(25)
-        {
-            let _ = file.seek(SeekFrom::Start(0)).and_then(|_| file.write_all(format!("{steps:020}").as_bytes()));
-            noted = Instant::now();
+        if let Some(count) = &count {
+            count.cell().store(steps, Ordering::Relaxed);
         }
     }
 }
 
-/// The busy background processes, the folder they note their steps in, and the last count read.
+/// The busy background processes, the folder with their step counts, and the counts themselves.
 struct Burners {
     kids: Vec<Child>,
     notes: PathBuf,
-    steps: Vec<u64>,
+    counts: Vec<Count>,
 }
 
 impl Burners {
-    /// Steps done so far by all of them. A note caught half-written keeps its last value.
-    fn steps(&mut self) -> u64 {
-        for (i, last) in self.steps.iter_mut().enumerate() {
-            let read = std::fs::read_to_string(self.notes.join(i.to_string())).ok().and_then(|t| t.parse().ok());
-            *last = read.unwrap_or(*last).max(*last);
-        }
-        self.steps.iter().sum()
+    /// Steps done so far by all of them.
+    fn steps(&self) -> u64 {
+        self.counts.iter().map(|count| count.cell().load(Ordering::Relaxed)).sum()
     }
 
     /// Their speed while `front` runs.
-    fn speed_during<T>(&mut self, front: impl FnOnce() -> T) -> (T, f64) {
+    fn speed_during<T>(&self, front: impl FnOnce() -> T) -> (T, f64) {
         let (before, t) = (self.steps(), Instant::now());
         let out = front();
         let secs = t.elapsed().as_secs_f64();
@@ -183,6 +205,8 @@ impl Drop for Burners {
             let _ = child.kill();
             let _ = child.wait();
         }
+        // Windows removes a file only once nothing maps it any more.
+        self.counts.clear();
         let _ = std::fs::remove_dir_all(&self.notes);
     }
 }
@@ -196,11 +220,12 @@ pub fn run(secs: f64, burners: usize) -> std::io::Result<Report> {
 
     let notes = std::env::temp_dir().join(format!("spry-bench-{}", std::process::id()));
     std::fs::create_dir_all(&notes)?;
-    let mut kids = Burners { kids: Vec::new(), notes, steps: vec![0; burners] };
+    let mut kids = Burners { kids: Vec::new(), notes, counts: Vec::new() };
     for i in 0..burners {
+        let note = kids.notes.join(i.to_string());
+        kids.counts.push(Count::open(&note, true)?);
         let mut burner = std::process::Command::new(&exe);
-        let burner =
-            platform::at_normal_priority(&mut burner).args(["burn", "180"]).arg(kids.notes.join(i.to_string()));
+        let burner = platform::at_normal_priority(&mut burner).args(["burn", "180"]).arg(note);
         let child = burner.stdin(Stdio::null()).stdout(Stdio::null()).spawn()?;
         kids.kids.push(child);
     }
