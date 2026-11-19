@@ -109,6 +109,23 @@ fn http(port: u16, method: &str, path: &str) -> Option<(u16, String)> {
     Some((head.split_whitespace().nth(1)?.parse().ok()?, body.to_string()))
 }
 
+/// (status code, content type, size of the body) of a GET whose body need not be text.
+fn fetch(port: u16, path: &str) -> Option<(u16, String, usize)> {
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).ok()?;
+    stream.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
+    let request = format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n");
+    stream.write_all(request.as_bytes()).ok()?;
+    let mut reply = Vec::new();
+    stream.read_to_end(&mut reply).ok()?;
+    let split = reply.windows(4).position(|w| w == b"\r\n\r\n")?;
+    let head = String::from_utf8_lossy(&reply[..split]).to_string();
+    let kind = head
+        .lines()
+        .find_map(|line| line.to_ascii_lowercase().strip_prefix("content-type:").map(|v| v.trim().to_string()))
+        .unwrap_or_default();
+    Some((head.split_whitespace().nth(1)?.parse().ok()?, kind, reply.len() - split - 4))
+}
+
 /// Where the running Spry answers, for the report when a wait times out.
 static RUNNING: std::sync::Mutex<Option<(u16, PathBuf)>> = std::sync::Mutex::new(None);
 
@@ -189,6 +206,20 @@ fn eases_shows_restores_and_rescues() {
     let token = std::fs::read_to_string(home.join("token")).unwrap();
     assert_eq!(http(port, "GET", "/api/status").map(|r| r.0), Some(403), "no token, no answer");
     assert_eq!(http(port, "GET", "/api/status?t=wrong").map(|r| r.0), Some(403));
+    // The page brings its own typefaces, behind the same token as everything else.
+    let page = http(port, "GET", &format!("/?t={token}")).expect("the page").1;
+    assert!(page.contains(&format!("/fonts/geist.woff2?t={token}")), "the page asks Spry itself for its typeface");
+    assert!(!page.contains("confirm("), "the page asks its own questions: Spry's window has no browser boxes");
+    for name in ["geist", "geist-mono", "instrument-serif"] {
+        let font = fetch(port, &format!("/fonts/{name}.woff2?t={token}")).expect("an answer");
+        assert_eq!((font.0, font.1.as_str()), (200, "font/woff2"), "{name} is served as a typeface");
+        assert!(font.2 > 10_000, "{name} arrives whole ({} bytes)", font.2);
+        assert_eq!(fetch(port, &format!("/fonts/{name}.woff2")).map(|r| r.0), Some(403), "no token, no typeface");
+    }
+    // Started without a tray icon, this Spry has no window of its own, and says so to whoever asks for it.
+    let shown = http(port, "POST", &format!("/api/show?t={token}")).expect("an answer");
+    assert_eq!(shown.0, 200);
+    assert!(shown.1.contains(r#""window":false"#), "no window here: {}", shown.1);
     wait_until("the dashboard lists the eased process", 15, || {
         let Some((200, body)) = http(port, "GET", &format!("/api/status?t={token}")) else { return false };
         let status: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();

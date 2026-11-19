@@ -38,6 +38,10 @@ pub struct Shared {
     pub update: Mutex<Option<String>>,
     /// When the dashboard last asked for the numbers.
     pub watched: Mutex<Option<Instant>>,
+    /// True while this Spry can show the page in a window of its own (tray.rs).
+    pub window: AtomicBool,
+    /// Set by whoever wants that window in front: the tray, a second start, `spry open`.
+    pub show: AtomicBool,
 }
 
 impl Shared {
@@ -52,6 +56,8 @@ impl Shared {
             autostart: AtomicBool::new(crate::install::is_installed()),
             update: Mutex::new(None),
             watched: Mutex::new(None),
+            window: AtomicBool::new(false),
+            show: AtomicBool::new(false),
         })
     }
 

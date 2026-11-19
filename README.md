@@ -10,12 +10,12 @@ When you switch apps, it switches with you. When Spry stops, everything is exact
 One small program for **Windows, macOS and Linux**. Free and open source (MIT). No account, no
 internet connection needed, no administrator rights.
 
-![The Spry page: what is held back right now, and a rule per app](docs/dashboard.png)
+![Spry's window: what is held back right now](docs/dashboard.png)
 
-<sub>The real page, shown with example apps. **How** says what Spry is doing to a process (eased,
+<sub>Spry's own window, shown with example apps. **How** says what Spry is doing to a process (eased,
 pulsed, frozen, or at full speed while the app in front rests; explained under
-[How it works](#how-it-works)); **For** says how long. The page follows your system's light or dark
-setting and fits a small window:</sub>
+[How it works](#how-it-works)); **For** says how long. The window follows your system's light or dark
+setting until you choose one at the bottom left, and fits a small window:</sub>
 
 <p><img src="docs/dashboard-dark.png" width="66%" alt="The same page in dark mode">&nbsp;<img src="docs/dashboard-phone.png" width="24%" alt="The same page in a narrow window"></p>
 
@@ -223,8 +223,13 @@ gained 1.96x to 2.21x on that PC (90% to 99% of a quiet machine) in the same six
 curl -fsSL https://raw.githubusercontent.com/juw12/spry/main/install.sh | sh
 ```
 
-This is the easy way on a Mac: a download through the browser is blocked by macOS until you allow it
-in System Settings > Privacy & Security, because Spry is not signed by Apple yet.
+It puts **Spry.app** into Applications (your own Applications folder when the shared one is not
+yours to write to), starts it, and makes the `spry` command point into the app.
+
+This is the easy way on a Mac. The app can also be downloaded as
+[Spry-macos.zip](https://github.com/juw12/spry/releases/latest/download/Spry-macos.zip), but macOS
+blocks an app that came through the browser until you allow it in System Settings > Privacy &
+Security, because Spry is not signed by Apple yet.
 
 **Linux** (x64 and ARM64): the same line as macOS. Spry has to see which app is in front:
 
@@ -235,14 +240,19 @@ in System Settings > Privacy & Security, because Spry is not signed by Apple yet
 | Wayland with Hyprland or niri | Written from their documentation, not yet tried on a real session. `spry front` tells you. |
 | Wayland with GNOME or KDE (the default on current Ubuntu and Fedora) | No: these desktops do not tell other programs. Spry then only follows the rules you set on its page, so it helps less there. |
 
-**After the first start** Spry opens its page in your browser and works at once, with no settings.
-It sits in the tray (Windows) or the menu bar (macOS); on Linux, run `spry open` for the page.
-Tick **Start Spry when I sign in** on the page to keep it. The page lists the apps that are busy,
+**After the first start** Spry opens its window and works at once, with no settings. On Windows and
+macOS that is a window of its own, like any app (it uses the web view that comes with the system:
+WebView2 on Windows, WebKit on macOS; on a Windows without WebView2 the page opens in the browser).
+Closing the window does not stop Spry: it goes on in the tray (Windows) or the menu bar (macOS), and
+the icon opens the window again. The window is a process of its own, so a closed window costs
+nothing: Spry itself stays as small as the page says. On Linux the page opens in your browser;
+run `spry open` for it.
+Tick **Start Spry when I sign in** under Settings to keep it. The page lists the apps that are busy,
 held back or have a rule; apps that are doing nothing are folded away behind one button.
 
-**To undo everything:** press **Quit Spry** on the page (every app is put back at that moment), untick
-"Start Spry when I sign in", and delete the file. Spry leaves nothing else behind except a small
-settings folder.
+**To undo everything:** press **Quit Spry** under Settings (every app is put back at that moment), untick
+"Start Spry when I sign in", and delete the file (on a Mac: Spry.app in Applications, and the `spry`
+link in `~/.local/bin`). Spry leaves nothing else behind except a small settings folder.
 
 People who prefer a terminal on Windows: `irm https://raw.githubusercontent.com/juw12/spry/main/install.ps1 | iex`
 
@@ -254,6 +264,7 @@ which source commit and which workflow produced it. With the
 
 ```sh
 gh attestation verify spry-linux-x64.tar.gz -R juw12/spry
+gh attestation verify Spry-macos.zip -R juw12/spry
 ```
 
 This shows the file was built from this repository's source by its release workflow, and not
@@ -366,8 +377,8 @@ program in a system folder.
 ## Commands
 
 ```
-spry              start Spry and open its page
-spry open         open the page of the running Spry
+spry              start Spry and open its window
+spry open         open the window of the running Spry
 spry status       show what is being held back right now
 spry bench        measure the effect on this computer (under a minute)
 spry clean        show what storage can be cleared; add --yes to clear it

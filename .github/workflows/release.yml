@@ -1,8 +1,11 @@
 name: release
 
+# A tag publishes a release. Started by hand (Actions > release > Run workflow) it only builds:
+# every download is made and kept with the run for a week, and nothing is published.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -19,6 +22,7 @@ jobs:
             asset: spry-windows-x64.zip
           - os: macos-15
             asset: spry-macos-universal.tar.gz
+            app: Spry-macos.zip
           - os: ubuntu-latest
             asset: spry-linux-x64.tar.gz
             target: x86_64-unknown-linux-musl
@@ -58,6 +62,11 @@ jobs:
           lipo -info spry
           ./spry version
           tar -czf ${{ matrix.asset }} spry
+          # The same program as an app: Spry.app, zipped the way Finder opens it.
+          sh scripts/bundle-macos.sh spry dist
+          dist/Spry.app/Contents/MacOS/spry version
+          codesign --verify --deep --strict dist/Spry.app
+          ditto -c -k --keepParent dist/Spry.app ${{ matrix.app }}
 
       - name: Build (Linux, runs on any distribution)
         if: runner.os == 'Linux'
@@ -72,23 +81,78 @@ jobs:
       - name: Checksum
         shell: bash
         run: |
-          if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum "${{ matrix.asset }}"
-          else
-            shasum -a 256 "${{ matrix.asset }}"
-          fi | tee "${{ matrix.asset }}.sha256"
+          for file in "${{ matrix.asset }}" ${{ matrix.app }}; do
+            if command -v sha256sum >/dev/null 2>&1; then
+              sha256sum "$file"
+            else
+              shasum -a 256 "$file"
+            fi | tee "$file.sha256"
+          done
 
       # A signed record that this exact file was built by this workflow from this commit.
       # Anyone can check it:  gh attestation verify <file> -R juw12/spry
       - name: Build record
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: ${{ matrix.asset }}
 
+      - name: Build record (the Mac app)
+        if: matrix.app && startsWith(github.ref, 'refs/tags/v')
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ matrix.app }}
+
+      # The release is not yet "latest": the download links on the README point at the latest release,
+      # and they must not lead to a release that still lacks a file. The last job below sets it.
+      - name: Keep the downloads with a run that was started by hand
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          retention-days: 7
+          path: |
+            ${{ matrix.asset }}
+            ${{ matrix.asset }}.sha256
+            ${{ matrix.app }}
+            ${{ matrix.app && format('{0}.sha256', matrix.app) }}
+
       - name: Publish
+        if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view "${{ github.ref_name }}" >/dev/null 2>&1 || gh release create "${{ github.ref_name }}" --title "Spry ${{ github.ref_name }}" --generate-notes
-          gh release upload "${{ github.ref_name }}" "${{ matrix.asset }}" "${{ matrix.asset }}.sha256" --clobber
+          # Several systems finish at about the same time; when another one made the release first, that is fine.
+          gh release view "${{ github.ref_name }}" >/dev/null 2>&1 \
+            || gh release create "${{ github.ref_name }}" --title "Spry ${{ github.ref_name }}" --generate-notes --latest=false \
+            || gh release view "${{ github.ref_name }}" >/dev/null
+          for file in "${{ matrix.asset }}" ${{ matrix.app }}; do
+            gh release upload "${{ github.ref_name }}" "$file" "$file.sha256" --clobber
+          done
+
+  # Only when every system has its download does the release become the one the links lead to.
+  latest:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - name: Every download is there
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          have="$(gh release view "${{ github.ref_name }}" -R "${{ github.repository }}" --json assets --jq '.assets[].name')"
+          for file in spry-windows-x64.zip Spry-macos.zip spry-macos-universal.tar.gz spry-linux-x64.tar.gz spry-linux-arm64.tar.gz; do
+            for name in "$file" "$file.sha256"; do
+              echo "$have" | grep -qx "$name" || { echo "missing from the release: $name" >&2; exit 1; }
+            done
+          done
+      - name: Make it the latest release, then run the install steps against it
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release edit "${{ github.ref_name }}" -R "${{ github.repository }}" --latest
+          gh workflow run install.yml -R "${{ github.repository }}" --ref main

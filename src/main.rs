@@ -3,7 +3,7 @@
 use spry::config::{self, Config, VERSION};
 use spry::engine::{self, Shared};
 use spry::{bench, clean, install, platform, server};
-use std::io::{Read, Write};
+use std::io::Write;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -11,9 +11,9 @@ use std::time::Duration;
 const HELP: &str = "Spry keeps an old computer quick: it holds back background apps so the app you are
 using gets the machine. Everything is put back when Spry stops.
 
-  spry              start Spry and open its page
+  spry              start Spry and open its window
   spry run          start Spry quietly (used at sign-in)
-  spry open         open the page of the running Spry
+  spry open         open the window of the running Spry
   spry status       show what is being held back right now
   spry bench        measure the effect on this computer (under a minute)
   spry clean        show what storage can be cleared; add --yes to clear it
@@ -78,6 +78,9 @@ fn main() {
             Some(pid) => println!("{pid}"),
             None => fail("Spry cannot see which app is in front right now."),
         },
+        // Spry's own window. Started by the running Spry, not by hand: it lives as long as its standard input.
+        #[cfg(any(windows, target_os = "macos"))]
+        "window" => spry::window::run(),
         "version" | "--version" | "-V" => println!("spry {VERSION}"),
         _ => println!("{HELP}"),
     }
@@ -111,18 +114,20 @@ fn start(open: bool, tray: bool) {
     let on_signal = shared.clone();
     let _ = ctrlc::set_handler(move || on_signal.quit.store(true, Ordering::Relaxed));
     watch_for_updates(shared.clone());
-    if open || first_run {
-        platform::open_url(&server::url(&shared.token));
-    }
+    let show = open || first_run;
 
+    // With a tray icon Spry has a window of its own for the page.
     #[cfg(any(windows, target_os = "macos"))]
     if tray {
         let for_engine = shared.clone();
         let worker = std::thread::spawn(move || engine::run_loop(&for_engine));
-        spry::tray::run(shared, worker);
+        spry::tray::run(shared, worker, show);
     }
     #[cfg(not(any(windows, target_os = "macos")))]
     let _ = tray;
+    if show {
+        platform::open_url(&server::url(&shared.token));
+    }
     engine::run_loop(&shared);
 }
 
@@ -152,21 +157,15 @@ fn watch_for_updates(shared: Arc<Shared>) {
 
 /// GET from the running Spry. None when it is not running.
 fn ask(path: &str) -> Option<String> {
-    let mut stream = std::net::TcpStream::connect(("127.0.0.1", config::port())).ok()?;
-    stream.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
-    let request = format!(
-        "GET {path}?t={} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n",
-        config::token(),
-        config::port()
-    );
-    stream.write_all(request.as_bytes()).ok()?;
-    let mut reply = String::new();
-    stream.read_to_string(&mut reply).ok()?;
-    let (head, body) = reply.split_once("\r\n\r\n")?;
-    head.starts_with("HTTP/1.1 200").then(|| body.to_string())
+    server::send("GET", path)
 }
 
 fn open_page() -> bool {
+    // The running Spry brings its own window to the front when it has one.
+    if server::send("POST", "/api/show").is_some_and(|answer| answer.contains(r#""window":true"#)) {
+        return true;
+    }
+    // No window (no tray icon, Linux, or a Spry from before 0.4): the page opens in the browser.
     let running = ask("/api/status").is_some();
     if running {
         platform::open_url(&server::url(&config::token()));
