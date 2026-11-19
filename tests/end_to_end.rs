@@ -96,12 +96,13 @@ fn spry(home: &Path, port: u16, args: &[&str]) -> Command {
     cmd
 }
 
-/// (status code, body) of a request to the running Spry.
+/// (status code, body) of a request to the running Spry. This tiny client reads a single UTF-8 body;
+/// request HTTP/1.0 so chunked-transfer framing cannot split a multi-byte character.
 fn http(port: u16, method: &str, path: &str) -> Option<(u16, String)> {
     let mut stream = TcpStream::connect(("127.0.0.1", port)).ok()?;
     stream.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
     let request =
-        format!("{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        format!("{method} {path} HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
     stream.write_all(request.as_bytes()).ok()?;
     let mut reply = String::new();
     stream.read_to_string(&mut reply).ok()?;
