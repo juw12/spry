@@ -327,6 +327,12 @@ pub fn apply(pid: u32, saved: &Saved, deep: bool) -> io::Result<()> {
     Ok(())
 }
 
+/// The app in front rests. A lower priority alone costs nothing while the processor is
+/// free, so that part stays and the app in front still goes first the moment it works again.
+pub fn lend(pid: u32, saved: &Saved) -> io::Result<()> {
+    apply(pid, saved, false)
+}
+
 pub fn restore(pid: u32, saved: &Saved) -> io::Result<()> {
     let handle =
         open(pid, PROCESS_SET_INFORMATION | PROCESS_SET_LIMITED_INFORMATION | PROCESS_QUERY_LIMITED_INFORMATION)?;

@@ -74,6 +74,7 @@ th.num { padding-right: 8px; }
 .chip { display: inline-block; padding: 1px 8px; border-radius: 5px; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
 .chip.front { background: var(--green-soft); color: var(--green); }
 .chip.ease { background: var(--blue-soft); color: var(--blue); }
+.chip.lent { color: var(--soft); box-shadow: inset 0 0 0 1px var(--line); }
 .chip.pulse { background: var(--amber-soft); color: var(--amber); }
 .chip.freeze { background: var(--track); color: var(--ink); }
 .empty { color: var(--soft); padding: 6px 0; }
@@ -144,9 +145,10 @@ footer button { font-size: 13px; padding: 3px 9px; }
   </section>
 
   <section>
-    <div class="head"><div class="grow"><h2>Measure on this computer</h2><p class="sub">Starts busy background processes for about 20 seconds, then compares the app in front with Spry off and on. The busy processes are removed afterwards.</p></div></div>
+    <div class="head"><div class="grow"><h2>Measure on this computer</h2><p class="sub">Starts busy background processes for about half a minute, then compares the app in front with Spry off and on, and shows what that costs the apps that are held. The busy processes are removed afterwards.</p></div></div>
     <div class="scroll"><table id="bench"></table></div>
     <p class="result" id="bench-result"></p>
+    <p class="sub" id="bench-cost"></p>
     <div class="actions"><button id="measure">Measure now</button><span class="sub" id="bench-note"></span></div>
   </section>
 
@@ -154,9 +156,10 @@ footer button { font-size: 13px; padding: 3px 9px; }
     <div class="head"><div class="grow"><h2>Settings</h2></div></div>
     <div class="row"><input type="checkbox" id="autostart"><label for="autostart">Start Spry when I sign in</label></div>
     <div class="row"><input type="checkbox" id="strong"><label for="strong">Strong mode<br><span class="sub">When the whole processor is busy, also pause the heaviest background processes in short pulses (120 ms paused, 80 ms running). They take longer to finish.</span></label></div>
+    <div class="row"><input type="checkbox" id="lend"><label for="lend">Lend idle time<br><span class="sub">While the app in front rests (almost no processor use for 6 seconds), held apps run at full speed. The hold is back when it works again. Apps with the rule “Always slow” or “Freeze” stay held.</span></label></div>
     <div class="row" id="trim-row" hidden><input type="checkbox" id="trim"><label for="trim">Give memory back when it runs low<br><span class="sub">Asks large background apps to release memory they are not using. They may load a moment longer when you return to them.</span></label></div>
     <p class="sub" style="margin-top:12px"><strong>How Spry holds an app back on this system:</strong> <span id="ease-text"></span>. The app in front is never touched. Everything is put back when Spry is paused, switched off or quit.</p>
-    <p class="sub" style="margin-top:8px"><strong>What Spry cannot do:</strong> it does not add memory or make the processor faster. It decides who goes first, so work in the background takes longer while you use something else.</p>
+    <p class="sub" style="margin-top:8px"><strong>What Spry cannot do:</strong> it does not add memory or make the processor faster. It decides who goes first: while the app in front works, the apps behind it wait and take longer. While it rests, they get the processor back.</p>
   </section>
 
   <footer><span id="version"></span><span id="counts"></span><span class="grow"></span><button id="quit">Quit Spry</button></footer>
@@ -209,13 +212,14 @@ function nameCell(name, count) {
   if (count > 1) box.append(el("span", { className: "ct", textContent: "(" + count + ")" }));
   return el("td", { className: "name" }, box);
 }
-const LEVEL = { ease: "Eased", pulse: "Pulsed", freeze: "Frozen", front: "In front" };
+const LEVEL = { lent: "Full speed", ease: "Eased", pulse: "Pulsed", freeze: "Frozen", front: "In front" };
 // Share of the whole processor, the same scale as the meter at the top.
 const share = (cpu, cores) => {
   const pct = cpu / Math.max(1, cores || 1);
   return pct > 0 && pct < 1 ? "<1%" : Math.round(pct) + "%";
 };
 const LEVEL_HELP = {
+  lent: "The app in front is resting, so this runs at full speed. Held again when it works",
   ease: "Runs only when the app in front does not need the processor",
   pulse: "Eased, and paused in short pulses while the machine is under pressure",
   freeze: "Paused until you switch back to it",
@@ -253,8 +257,11 @@ function render(s) {
       : paused ? "Spry is paused. Nothing is held back."
       : "Nothing needs holding back. Spry acts only when an app in the background is busy.";
   } else {
-    $("held-sub").textContent = s.held.length === 1 ? "1 background process gives way to the app in front."
-      : s.held.length + " background processes give way to the app in front.";
+    const count = s.held.length === 1 ? "1 background process" : s.held.length + " background processes";
+    const lent = s.held.filter(h => h.level === "lent").length;
+    $("held-sub").textContent = lent === s.held.length
+      ? "The app in front is resting: " + count + (lent === 1 ? " runs" : " run") + " at full speed until it works again."
+      : count + (s.held.length === 1 ? " gives" : " give") + " way to the app in front.";
     held.append(el("tr", null, el("th", { textContent: "Process" }), el("th", { textContent: "How" }),
       el("th", { className: "num", textContent: "Processor" }), el("th", { className: "num hide-narrow", textContent: "Memory" }),
       el("th", { className: "num hide-narrow", textContent: "For" })));
@@ -302,7 +309,7 @@ function render(s) {
     }
   }
 
-  for (const [id, on] of [["autostart", s.autostart], ["strong", s.config.strong], ["trim", s.config.trim_memory]]) {
+  for (const [id, on] of [["autostart", s.autostart], ["strong", s.config.strong], ["lend", s.config.lend], ["trim", s.config.trim_memory]]) {
     if (document.activeElement !== $(id)) $(id).checked = on;
   }
   $("trim-row").hidden = !s.can_trim;
@@ -355,6 +362,7 @@ $("pause").onclick = () => api("/api/pause?secs=" + (state && state.paused_secs 
 $("power").onclick = () => saveConfig(cfg => { cfg.enabled = !cfg.enabled; });
 $("apps-more").onclick = () => { showQuiet = !showQuiet; busyUntil = 0; if (state) render(state); };
 $("strong").onchange = e => saveConfig(cfg => { cfg.strong = e.target.checked; });
+$("lend").onchange = e => saveConfig(cfg => { cfg.lend = e.target.checked; });
 $("trim").onchange = e => saveConfig(cfg => { cfg.trim_memory = e.target.checked; });
 $("autostart").onchange = e => api("/api/autostart?on=" + (e.target.checked ? 1 : 0), "POST").then(refresh).catch(showError);
 $("quit").onclick = () => {
@@ -394,7 +402,7 @@ $("clear").onclick = () => {
 
 $("measure").onclick = () => {
   $("measure").disabled = true;
-  $("bench-note").textContent = "Measuring. The computer will feel busy for about 20 seconds…";
+  $("bench-note").textContent = "Measuring. The computer will feel busy for about half a minute…";
   api("/api/bench", "POST").then(r => {
     const table = $("bench");
     table.innerHTML = "";
@@ -411,6 +419,11 @@ $("measure").onclick = () => {
     $("bench-result").textContent = gain >= 1.05
       ? "With Spry the app in front did " + gain.toFixed(2) + " times the work, " + Math.round(100 * best.work / r.quiet.work) + "% of a quiet computer."
       : "No real difference here (" + gain.toFixed(2) + " times). This system already shares the processor well, or the test was disturbed.";
+    const b = r.background;
+    const kept = (speed, of) => Math.round(100 * speed / Math.max(of, 0.001)) + "%";
+    $("bench-cost").textContent = b ? "The held apps kept " + kept(b.front_works_held, b.front_works_off)
+      + " of their own speed while the app in front worked. While it rested they ran at " + kept(b.front_rests_lent, b.front_rests_off)
+      + " (held all the time, as before Spry 0.3: " + kept(b.front_rests_held, b.front_rests_off) + ")." : "";
     $("bench-note").textContent = r.cores + " processor threads, " + r.burners + " busy background processes.";
   }).catch(showError).finally(() => { $("measure").disabled = false; $("measure").textContent = "Measure again"; });
 };

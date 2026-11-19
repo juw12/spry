@@ -109,6 +109,12 @@ mod os {
         if saved.a == 0 { set(pid, 0) } else { Ok(()) }
     }
 
+    /// The app in front rests. The background state slows a process even on a free
+    /// processor (efficiency cores only on Apple silicon), so it is lifted until then.
+    pub fn lend(pid: u32, saved: &Saved) -> io::Result<()> {
+        restore(pid, saved)
+    }
+
     pub fn forget(_pid: u32) {}
 
     /// macOS gives no way to keep another app off a processor core.
@@ -362,6 +368,12 @@ mod os {
             }
         }
         if done > 0 { Ok(()) } else { Err(io::Error::last_os_error()) }
+    }
+
+    /// The app in front rests. Idle disk priority costs nothing while the disk is free, so
+    /// it stays; the processor threads kept free under pressure are given back.
+    pub fn lend(pid: u32, saved: &Saved) -> io::Result<()> {
+        apply(pid, saved, false)
     }
 
     /// Puts back only what is still as Spry set it: a value the app changed itself in the

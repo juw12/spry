@@ -13,6 +13,8 @@ pub struct Proc {
     pub name: String,
     /// Share of one CPU core in percent, smoothed.
     pub cpu: f32,
+    /// The same over the last reading alone, not smoothed.
+    pub cpu_now: f32,
     pub mem: u64,
     /// Owned by the user who runs Spry.
     pub mine: bool,
@@ -26,6 +28,9 @@ pub struct Snapshot {
     pub procs: Vec<Proc>,
     /// Process that owns the window in front. None = not known on this desktop.
     pub fg: Option<u32>,
+    /// A fresher reading of the app in front (share of one core in percent), taken twice a
+    /// second while held apps are lent its idle time.
+    pub front_now: Option<f32>,
     pub cpu_total: f32,
     pub mem_free_pct: f32,
     pub mem_total: u64,
@@ -35,6 +40,8 @@ pub struct Snapshot {
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Level {
+    /// Would be held, but the app in front rests: runs at full speed until it works again.
+    Lent,
     /// Lower priority: gets the CPU only when the app in front does not need it.
     Ease,
     /// Eased, and also paused and resumed in short pulses.
@@ -61,6 +68,8 @@ pub struct PolicyState {
     pulsed: HashSet<u32>,
     high_since: Option<Instant>,
     calm_since: Option<Instant>,
+    front: Option<u32>,
+    rest_since: Option<Instant>,
     pub pressure: bool,
 }
 
@@ -81,6 +90,12 @@ const TRIM_MIN_BYTES: u64 = 150 * 1024 * 1024;
 const TRIM_GRACE: Duration = Duration::from_secs(60);
 const TRIM_AGAIN: Duration = Duration::from_secs(300);
 const PULSE_CPU: f32 = 50.0;
+/// The app in front rests while all of it together uses less than this share of one core...
+const FRONT_RESTS_BELOW: f32 = 5.0;
+/// ...for this long. Then nothing is gained by holding the others back.
+pub const LEND_AFTER: Duration = Duration::from_secs(6);
+/// On the half-second reading a short burst counts as working again.
+const FRONT_WAKES_AT: f32 = 15.0;
 
 struct Tree<'a> {
     by_pid: HashMap<u32, &'a Proc>,
@@ -207,6 +222,18 @@ pub fn decide(cfg: &Config, snap: &Snapshot, st: &mut PolicyState, now: Instant)
 
     let fg_known = snap.fg.is_some();
     let mem_tight = snap.mem_free_pct < cfg.pressure_mem_free;
+
+    // Does the app in front need the processor right now? While it rests, holding the others
+    // back gains nothing, so they are lent the idle time. Switching apps counts as working.
+    let front_cpu: f32 = snap.procs.iter().filter(|p| family.contains(&p.pid)).map(|p| p.cpu_now).sum();
+    let works = front_cpu >= FRONT_RESTS_BELOW || snap.front_now.is_some_and(|cpu| cpu >= FRONT_WAKES_AT);
+    let rests = fg_known && !works && st.front == snap.fg;
+    st.front = snap.fg;
+    if !rests {
+        st.rest_since = None;
+    }
+    let lend = cfg.lend && rests && now.duration_since(*st.rest_since.get_or_insert(now)) >= LEND_AFTER;
+
     let mut plan = Plan { family, deep: st.pressure, ..Plan::default() };
 
     for p in &snap.procs {
@@ -242,7 +269,15 @@ pub fn decide(cfg: &Config, snap: &Snapshot, st: &mut PolicyState, now: Instant)
             if pulse {
                 st.pulsed.insert(p.pid);
             }
-            plan.levels.insert(p.pid, if pulse { Level::Pulse } else { Level::Ease });
+            // A rule set by name ("always hold back") is kept whatever the app in front does.
+            let level = if lend && rule != Rule::Always {
+                Level::Lent
+            } else if pulse {
+                Level::Pulse
+            } else {
+                Level::Ease
+            };
+            plan.levels.insert(p.pid, level);
         }
 
         if cfg.trim_memory
@@ -269,6 +304,7 @@ mod tests {
             ppid: Some(ppid),
             name: name.into(),
             cpu,
+            cpu_now: cpu,
             mem: 200 << 20,
             mine: true,
             start: pid as u64,
@@ -288,6 +324,7 @@ mod tests {
                 p(40, 10, "spry", 0.1),
             ],
             fg,
+            front_now: None,
             cpu_total: 40.0,
             mem_free_pct: 50.0,
             mem_total: 8 << 30,
@@ -432,6 +469,87 @@ mod tests {
         let plan = run(&Config::default(), &snap);
         assert!(!plan.family.contains(&21));
         assert_eq!(plan.levels.get(&21), Some(&Level::Ease));
+    }
+
+    /// The desk with the editor (20, 21) in front and resting; the browser tab (31) stays busy.
+    fn resting(front_cpu: f32) -> Snapshot {
+        let mut snap = desk(Some(20));
+        snap.procs[1].cpu_now = front_cpu;
+        snap.procs[2].cpu_now = 0.0;
+        snap
+    }
+
+    #[test]
+    fn held_apps_are_lent_the_time_while_the_front_app_rests() {
+        let cfg = Config { strong: true, ..Config::default() };
+        let mut st = PolicyState::default();
+        let t0 = Instant::now();
+        let at = |secs: u64| t0 + Duration::from_secs(secs);
+        let mut snap = resting(1.0);
+        snap.cpu_total = 97.0;
+
+        // The first look counts as a switch to this app; the rest is timed from the second.
+        assert_eq!(decide(&cfg, &snap, &mut st, t0).levels.get(&31), Some(&Level::Ease), "not at once");
+        assert_eq!(decide(&cfg, &snap, &mut st, at(4)).levels.get(&31), Some(&Level::Pulse), "pressure, strong mode");
+        assert_eq!(decide(&cfg, &snap, &mut st, at(9)).levels.get(&31), Some(&Level::Pulse), "5 s of rest: not yet");
+        let lent = decide(&cfg, &snap, &mut st, at(10));
+        assert_eq!(lent.levels.get(&31), Some(&Level::Lent), "the front app rested for 6 s");
+        assert!(lent.deep, "pressure is still noted, so the full hold is back at once");
+
+        // It works again on the next reading: held at once, as hard as before.
+        let mut hot = resting(40.0);
+        hot.cpu_total = 97.0;
+        assert_eq!(decide(&cfg, &hot, &mut st, at(12)).levels.get(&31), Some(&Level::Pulse));
+
+        // Resting again starts the wait again.
+        assert_eq!(decide(&cfg, &snap, &mut st, at(14)).levels.get(&31), Some(&Level::Pulse));
+        assert_eq!(decide(&cfg, &snap, &mut st, at(20)).levels.get(&31), Some(&Level::Lent));
+        // A short burst seen on the half-second reading ends it too.
+        snap.front_now = Some(30.0);
+        assert_eq!(decide(&cfg, &snap, &mut st, at(21)).levels.get(&31), Some(&Level::Pulse));
+        // Below the wake-up mark the half-second reading changes nothing.
+        snap.front_now = Some(8.0);
+        decide(&cfg, &snap, &mut st, at(22));
+        assert_eq!(decide(&cfg, &snap, &mut st, at(28)).levels.get(&31), Some(&Level::Lent));
+    }
+
+    #[test]
+    fn switching_apps_counts_as_working() {
+        let cfg = Config::default();
+        let mut st = PolicyState::default();
+        let t0 = Instant::now();
+        let at = |secs: u64| t0 + Duration::from_secs(secs);
+        let mut snap = resting(0.0);
+        decide(&cfg, &snap, &mut st, t0);
+        decide(&cfg, &snap, &mut st, at(1));
+        assert_eq!(decide(&cfg, &snap, &mut st, at(7)).levels.get(&31), Some(&Level::Lent));
+        // You click on the desktop. It is just as quiet, but you are clearly at the machine.
+        snap.fg = Some(10);
+        assert_eq!(decide(&cfg, &snap, &mut st, at(8)).levels.get(&31), Some(&Level::Ease));
+        assert_eq!(decide(&cfg, &snap, &mut st, at(9)).levels.get(&31), Some(&Level::Ease));
+        assert_eq!(decide(&cfg, &snap, &mut st, at(14)).levels.get(&31), Some(&Level::Ease));
+        assert_eq!(decide(&cfg, &snap, &mut st, at(15)).levels.get(&31), Some(&Level::Lent));
+    }
+
+    #[test]
+    fn nothing_is_lent_when_switched_off_by_rule_or_without_a_known_front_app() {
+        let t0 = Instant::now();
+        let later = t0 + Duration::from_secs(60);
+        let lent = |cfg: &Config, snap: &Snapshot| {
+            let mut st = PolicyState::default();
+            decide(cfg, snap, &mut st, t0);
+            decide(cfg, snap, &mut st, t0 + Duration::from_secs(1));
+            decide(cfg, snap, &mut st, later).levels.get(&31).copied()
+        };
+        assert_eq!(lent(&Config::default(), &resting(0.0)), Some(Level::Lent));
+        assert_eq!(lent(&Config { lend: false, ..Config::default() }, &resting(0.0)), Some(Level::Ease));
+        let named = Config { always_slow: vec!["browser".into()], ..Config::default() };
+        assert_eq!(lent(&named, &resting(0.0)), Some(Level::Ease), "a rule by name is kept");
+        let mut blind = resting(0.0);
+        blind.fg = None;
+        assert_eq!(lent(&named, &blind), Some(Level::Ease), "front app unknown: nobody knows it rests");
+        let frozen = Config { freeze: vec!["browser".into()], ..Config::default() };
+        assert_eq!(lent(&frozen, &resting(0.0)), Some(Level::Freeze));
     }
 
     #[test]

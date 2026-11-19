@@ -19,6 +19,24 @@ pub struct Saved {
     pub b: i64,
 }
 
+/// How hard a held process is held.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Hold {
+    /// The app in front rests: only the part of the hold that costs nothing on a free processor.
+    Lent,
+    Eased,
+    /// The whole machine is under pressure.
+    Deep,
+}
+
+pub fn hold(pid: u32, saved: &Saved, how: Hold) -> std::io::Result<()> {
+    match how {
+        Hold::Lent => lend(pid, saved),
+        Hold::Eased => apply(pid, saved, false),
+        Hold::Deep => apply(pid, saved, true),
+    }
+}
+
 /// Which processor threads eased apps keep off while the machine is under pressure, so the
 /// app in front always finds a free one. `cores` lists the usable threads by physical core,
 /// best cores first. About a quarter is kept free, in whole cores, and never more than half.

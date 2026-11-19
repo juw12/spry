@@ -15,7 +15,7 @@ using gets the machine. Everything is put back when Spry stops.
   spry run          start Spry quietly (used at sign-in)
   spry open         open the page of the running Spry
   spry status       show what is being held back right now
-  spry bench        measure the effect on this computer (about 20 seconds)
+  spry bench        measure the effect on this computer (about half a minute)
   spry clean        show what storage can be cleared; add --yes to clear it
   spry install      start Spry when you sign in      (spry uninstall undoes it)
   spry rescue       put processes back after a crash
@@ -57,7 +57,9 @@ fn main() {
                 Err(e) => fail(&format!("benchmark failed: {e}")),
             }
         }
-        "burn" => bench::burn(args.get(1).and_then(|s| s.parse().ok()).unwrap_or(60)),
+        "burn" => {
+            bench::burn(args.get(1).and_then(|s| s.parse().ok()).unwrap_or(60), args.get(2).map(std::path::Path::new))
+        }
         "clean" => clean_cli(has("--yes")),
         "install" => match install::install() {
             Ok(message) => println!("{message}"),

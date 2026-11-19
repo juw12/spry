@@ -1,8 +1,9 @@
 //! The operating-system levers, tried on a real busy process: every change must be
 //! visible, and every change must be put back exactly.
 
-use spry::engine::Pulse;
+use spry::engine::{Pulse, Sampler};
 use spry::platform;
+use std::collections::HashSet;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Mutex, MutexGuard};
 use std::thread::sleep;
@@ -77,6 +78,62 @@ fn easing_shows_and_is_put_back_exactly() {
     platform::restore(burner.pid(), &saved).expect("put the process back");
     assert_eq!(platform::read_level(burner.pid()), Some(before), "the starting state must come back exactly");
     assert!(burner.load(Duration::from_millis(600)) > 0.2, "the process must still be running");
+}
+
+/// While the app in front rests, a held process gets back everything that costs speed on a
+/// free processor, and the hold can come back and be undone exactly as before.
+#[test]
+fn lending_gives_the_speed_back_and_the_hold_can_return() {
+    let burner = Burner::start();
+    let pid = burner.pid();
+    let before = platform::read_level(pid).expect("read the starting state");
+    let all = platform::cpus_open(pid);
+    let kept = platform::kept_free_count() as u32;
+    let saved = platform::save(pid).expect("save the starting state");
+
+    for round in 0..2 {
+        platform::hold(pid, &saved, platform::Hold::Deep).expect("hold under pressure");
+        assert_ne!(platform::read_level(pid), Some(before), "round {round}: the hold must show");
+        if let Some(all) = all.filter(|_| kept > 0) {
+            assert_eq!(platform::cpus_open(pid), Some(all - kept), "round {round}: kept-free threads are closed");
+        }
+
+        platform::hold(pid, &saved, platform::Hold::Lent).expect("lend the idle time");
+        assert_eq!(platform::cpus_open(pid), all, "round {round}: lent, every processor thread is open again");
+        if cfg!(target_os = "macos") {
+            assert_eq!(platform::read_level(pid), Some(before), "round {round}: lent, the background state is lifted");
+        }
+        assert!(burner.load(Duration::from_millis(600)) > 0.2, "round {round}: lent, the process runs");
+    }
+
+    platform::hold(pid, &saved, platform::Hold::Deep).expect("the app in front works again");
+    platform::restore(pid, &saved).expect("put the process back");
+    assert_eq!(platform::read_level(pid), Some(before), "the starting state must come back exactly");
+    assert_eq!(platform::cpus_open(pid), all, "and every processor thread is open");
+}
+
+/// The half-second reading that brings the hold back: it must see a process start to work.
+#[test]
+fn the_fresh_reading_sees_the_front_app_work_and_rest() {
+    let burner = Burner::start();
+    let front = HashSet::from([burner.pid()]);
+    let mut sampler = Sampler::new();
+    assert_eq!(sampler.front_now(&front), None, "the first reading has nothing to compare with");
+    sleep(Duration::from_millis(500));
+    let working = sampler.front_now(&front).expect("a second reading half a second later");
+    assert!(working > 20.0, "a busy process must read as working, read {working:.0}% of one core");
+
+    platform::suspend(burner.pid()).expect("freeze");
+    sleep(Duration::from_millis(200));
+    sampler.front_now(&front);
+    sleep(Duration::from_millis(500));
+    let resting = sampler.front_now(&front).expect("a reading while it is frozen");
+    assert!(resting < 5.0, "a frozen process must read as resting, read {resting:.0}% of one core");
+
+    platform::resume(burner.pid()).expect("thaw");
+    sleep(Duration::from_millis(500));
+    let again = sampler.front_now(&front).expect("a reading after the thaw");
+    assert!(again > 15.0, "working again must show within one reading, read {again:.0}% of one core");
 }
 
 #[test]

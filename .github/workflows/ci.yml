@@ -30,6 +30,9 @@ jobs:
         run: cargo clippy --release --all-targets -- -D warnings
       - name: Test (unit, real process levers, the whole program)
         run: cargo test --release --no-fail-fast
+        env:
+          # The whole-program test notes here how fast the hold came back.
+          SPRY_NOTES: ${{ github.workspace }}/bench/${{ matrix.os }}-notes
       # sway runs without a screen; a terminal window is opened in it and Spry must name its process.
       - name: The app in front is seen on Wayland (sway)
         if: matrix.os == 'ubuntu-latest'

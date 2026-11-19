@@ -1,11 +1,11 @@
 //! Reads the machine, asks the policy what to do, applies it, and always puts things back.
 
 use crate::config::{self, Config, is_protected, norm};
-use crate::platform::{self, Saved};
+use crate::platform::{self, Hold, Saved};
 use crate::policy::{self, Level, Plan, PolicyState, Proc, Snapshot};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
@@ -18,6 +18,9 @@ const SLOW: Duration = Duration::from_secs(2);
 /// While the machine is calm and nobody is looking at the dashboard, measuring can wait longer.
 const CALM: Duration = Duration::from_secs(5);
 const CALM_BELOW_CPU: f32 = 35.0;
+// When the app in front wakes up, the half-second reading brings the hold back; the full
+// reading must confirm it before time can be lent again, also at the calm pace.
+const _: () = assert!(policy::LEND_AFTER.as_secs() > CALM.as_secs());
 const WATCHED_FOR: Duration = Duration::from_secs(10);
 /// One pulse: paused for this long, then running for this long.
 pub const PULSE_STOP: Duration = Duration::from_millis(120);
@@ -74,6 +77,10 @@ pub struct Sampler {
     system: HashMap<u32, (u64, bool)>,
     disk: (u64, u64),
     disk_at: Option<Instant>,
+    /// A second, small reader for the app in front alone: (processor time used so far per
+    /// process in ms, when that was read). Kept apart so it cannot disturb the main readings.
+    fast: System,
+    fast_seen: Option<(HashMap<u32, u64>, Instant)>,
     pub self_pid: u32,
 }
 
@@ -92,6 +99,8 @@ impl Sampler {
             system: HashMap::new(),
             disk: (0, 0),
             disk_at: None,
+            fast: System::new().expect("the operating system refused to report its processes"),
+            fast_seen: None,
             self_pid: std::process::id(),
         };
         sampler.refresh();
@@ -154,6 +163,26 @@ impl Sampler {
         self.system.retain(|pid, _| sys.process(sysinfo::Pid::from_u32(*pid)).is_some());
     }
 
+    /// How much processor these processes used since the last call, as a share of one core
+    /// in percent. None on the first call and after a gap, when there is nothing to compare with.
+    pub fn front_now(&mut self, pids: &HashSet<u32>) -> Option<f32> {
+        let list: Vec<sysinfo::Pid> = pids.iter().map(|pid| sysinfo::Pid::from_u32(*pid)).collect();
+        let kind = ProcessRefreshKind::nothing().with_cpu().without_tasks();
+        self.fast.refresh_processes_specifics(ProcessesToUpdate::Some(&list), true, kind);
+        let now = Instant::now();
+        let used: HashMap<u32, u64> = list
+            .iter()
+            .filter_map(|pid| self.fast.process(*pid).map(|p| (pid.as_u32(), p.accumulated_cpu_time())))
+            .collect();
+        let (before, at) = self.fast_seen.replace((used.clone(), now))?;
+        let passed = now.duration_since(at);
+        if passed < Duration::from_millis(100) || passed > Duration::from_millis(1500) {
+            return None;
+        }
+        let ms: u64 = used.iter().filter_map(|(pid, t)| before.get(pid).map(|old| t.saturating_sub(*old))).sum();
+        Some(ms as f32 * 100.0 / passed.as_millis() as f32)
+    }
+
     pub fn sample(&mut self) -> Snapshot {
         self.refresh();
         if self.uid.is_some() {
@@ -171,6 +200,7 @@ impl Sampler {
                 ppid: p.parent().map(|x| x.as_u32()),
                 name: norm(&p.name().to_string_lossy()),
                 cpu,
+                cpu_now: now,
                 mem: p.memory(),
                 mine: self.uid.is_some() && p.user_id() == self.uid.as_ref(),
                 start: p.start_time(),
@@ -182,6 +212,7 @@ impl Sampler {
         Snapshot {
             procs,
             fg: None,
+            front_now: None,
             cpu_total: platform::cpu_total().unwrap_or_else(|| self.sys.global_cpu_usage()),
             mem_free_pct: self.sys.available_memory() as f32 * 100.0 / total as f32,
             mem_total: total,
@@ -258,7 +289,7 @@ pub struct Touched {
     pub level: Level,
     pub saved: Saved,
     pub frozen: bool,
-    pub deep: bool,
+    pub hold: Hold,
     pub since: Instant,
 }
 
@@ -317,28 +348,25 @@ impl Engine {
             if self.refused.contains_key(&pid) {
                 continue;
             }
+            let hold = match level {
+                Level::Lent => Hold::Lent,
+                _ if plan.deep => Hold::Deep,
+                _ => Hold::Eased,
+            };
             match self.touched.get_mut(&pid) {
                 Some(t) => {
-                    if t.deep != plan.deep && platform::apply(pid, &t.saved, plan.deep).is_ok() {
-                        t.deep = plan.deep;
+                    if t.hold != hold && platform::hold(pid, &t.saved, hold).is_ok() {
+                        t.hold = hold;
                     }
                     changed |= t.level != level;
                     t.level = level;
                 }
                 None => {
-                    let done = platform::save(pid).and_then(|s| platform::apply(pid, &s, plan.deep).map(|_| s));
+                    let done = platform::save(pid).and_then(|s| platform::hold(pid, &s, hold).map(|_| s));
                     match done {
                         Ok(saved) => {
                             let (name, start) = (p.name.clone(), p.start);
-                            let t = Touched {
-                                name,
-                                start,
-                                level,
-                                saved,
-                                frozen: false,
-                                deep: plan.deep,
-                                since: Instant::now(),
-                            };
+                            let t = Touched { name, start, level, saved, frozen: false, hold, since: Instant::now() };
                             self.touched.insert(pid, t);
                             self.events += 1;
                             changed = true;
@@ -410,7 +438,12 @@ impl Engine {
         let held: Vec<Held> = self
             .touched
             .iter()
-            .map(|(pid, t)| Held { pid: *pid, start: t.start, saved: t.saved, stopped: t.level != Level::Ease })
+            .map(|(pid, t)| Held {
+                pid: *pid,
+                start: t.start,
+                saved: t.saved,
+                stopped: matches!(t.level, Level::Pulse | Level::Freeze),
+            })
             .collect();
         let _ = std::fs::create_dir_all(config::data_dir());
         if let Ok(text) = serde_json::to_string(&held) {
@@ -477,12 +510,13 @@ fn status_json(
     let mut apps: HashMap<&str, App> = HashMap::new();
     for p in snap.procs.iter().filter(|p| p.mine) {
         let state = if plan.family.contains(&p.pid) {
-            4
+            5
         } else {
             match engine.touched.get(&p.pid).map(|t| t.level) {
-                Some(Level::Freeze) => 3,
-                Some(Level::Pulse) => 2,
-                Some(Level::Ease) => 1,
+                Some(Level::Freeze) => 4,
+                Some(Level::Pulse) => 3,
+                Some(Level::Ease) => 2,
+                Some(Level::Lent) => 1,
                 None => 0,
             }
         };
@@ -503,7 +537,7 @@ fn status_json(
         .enumerate()
         .filter(|(i, (name, _))| *i < 14 || policy::rule_for_name(cfg, name) != policy::Rule::Auto)
         .map(|(_, (name, a))| {
-            let state = ["", "ease", "pulse", "freeze", "front"][a.state as usize];
+            let state = ["", "lent", "ease", "pulse", "freeze", "front"][a.state as usize];
             json!({ "name": name, "cpu": a.cpu, "mem": a.mem, "count": a.count, "state": state,
                     "protected": is_protected(name) || a.system, "rule": policy::rule_for_name(cfg, name) })
         })
@@ -521,6 +555,7 @@ fn status_json(
         "mem_free_pct": snap.mem_free_pct,
         "mem_total": snap.mem_total,
         "pressure": pressure,
+        "lending": engine.touched.values().any(|t| t.level == Level::Lent),
         "mem_tight": snap.mem_free_pct < cfg.pressure_mem_free,
         "disk_total": disk.0,
         "disk_free": disk.1,
@@ -548,6 +583,10 @@ pub fn run_loop(shared: &Shared) {
     let mut st = PolicyState::default();
     let mut snap = Snapshot::default();
     let mut measured: Option<Instant> = None;
+    // For tests on machines without a screen: this process stands in for the app in front.
+    let front: Option<u32> = std::env::var("SPRY_FRONT_PID").ok().and_then(|pid| pid.parse().ok());
+    // The app in front, while held apps are lent its idle time.
+    let mut resting: Option<HashSet<u32>> = None;
 
     while !shared.quit.load(Ordering::Relaxed) {
         let cfg = shared.cfg.lock().unwrap().clone();
@@ -558,7 +597,9 @@ pub fn run_loop(shared: &Shared) {
             snap = sampler.sample();
             measured = Some(Instant::now());
         }
-        snap.fg = platform::foreground_pid();
+        snap.fg = front.or_else(platform::foreground_pid);
+        // Read it twice a second, so the hold is back quickly when it starts to work.
+        snap.front_now = resting.as_ref().and_then(|family| sampler.front_now(family));
 
         let plan = if cfg.enabled && shared.paused_secs() == 0 {
             policy::decide(&cfg, &snap, &mut st, Instant::now())
@@ -567,6 +608,7 @@ pub fn run_loop(shared: &Shared) {
             Plan::default()
         };
         engine.apply(&plan, &snap);
+        resting = plan.levels.values().any(|level| *level == Level::Lent).then(|| plan.family.clone());
 
         if slow {
             let disk = sampler.disk();

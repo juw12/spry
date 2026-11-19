@@ -2,8 +2,9 @@
 //! background processes are held back. It starts its own busy processes and removes them again.
 
 use crate::engine::Pulse;
-use crate::platform::{self, Saved};
+use crate::platform::{self, Hold, Saved};
 use serde::Serialize;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Stdio};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
@@ -15,6 +16,20 @@ pub struct Phase {
     /// Time to wake up and finish one small piece of work, in milliseconds.
     pub p50_ms: f64,
     pub p95_ms: f64,
+}
+
+/// What the hold costs the held apps: their own steps per second, all of them together.
+#[derive(Serialize, Clone, Copy, Debug)]
+pub struct Background {
+    /// While the app in front works: with Spry off, and held.
+    pub front_works_off: f64,
+    pub front_works_held: f64,
+    /// While the app in front rests: left alone, held the way Spry 0.2 held them whatever the
+    /// app in front did (the same again with pulses), and lent the idle time as Spry does now.
+    pub front_rests_off: f64,
+    pub front_rests_held: f64,
+    pub front_rests_pulsed: Option<f64>,
+    pub front_rests_lent: f64,
 }
 
 #[derive(Serialize, Debug)]
@@ -29,6 +44,7 @@ pub struct Report {
     pub busy: Phase,
     pub eased: Phase,
     pub pulsed: Option<Phase>,
+    pub background: Background,
     pub ease_text: &'static str,
 }
 
@@ -118,22 +134,56 @@ fn measure(n: u64, secs: f64) -> Phase {
 }
 
 /// A process that only burns CPU. Stops by itself, so none is ever left behind for long.
-pub fn burn(secs: u64) {
+/// With a file to write to, it notes there how many steps it has done, about 40 times a second.
+pub fn burn(secs: u64, note: Option<&Path>) {
     let t = Instant::now();
+    let (mut steps, mut noted) = (0u64, Instant::now());
     while t.elapsed().as_secs() < secs {
         chunk(2_000_000);
+        steps += 1;
+        if let Some(file) = note
+            && noted.elapsed() >= Duration::from_millis(25)
+        {
+            let _ = std::fs::write(file, steps.to_string());
+            noted = Instant::now();
+        }
     }
 }
 
-struct Burners(Vec<Child>);
+/// The busy background processes, the folder they note their steps in, and the last count read.
+struct Burners {
+    kids: Vec<Child>,
+    notes: PathBuf,
+    steps: Vec<u64>,
+}
+
+impl Burners {
+    /// Steps done so far by all of them. A note caught half-written keeps its last value.
+    fn steps(&mut self) -> u64 {
+        for (i, last) in self.steps.iter_mut().enumerate() {
+            let read = std::fs::read_to_string(self.notes.join(i.to_string())).ok().and_then(|t| t.parse().ok());
+            *last = read.unwrap_or(*last).max(*last);
+        }
+        self.steps.iter().sum()
+    }
+
+    /// Their speed while `front` runs.
+    fn speed_during<T>(&mut self, front: impl FnOnce() -> T) -> (T, f64) {
+        let (before, t) = (self.steps(), Instant::now());
+        let out = front();
+        let secs = t.elapsed().as_secs_f64();
+        (out, (self.steps() - before) as f64 / secs)
+    }
+}
 
 impl Drop for Burners {
     fn drop(&mut self) {
-        for child in &mut self.0 {
+        for child in &mut self.kids {
             let _ = platform::resume(child.id());
             let _ = child.kill();
             let _ = child.wait();
         }
+        let _ = std::fs::remove_dir_all(&self.notes);
     }
 }
 
@@ -144,23 +194,29 @@ pub fn run(secs: f64, burners: usize) -> std::io::Result<Report> {
     let n = calibrate();
     let quiet = measure(n, secs);
 
-    let mut kids = Burners(Vec::new());
-    for _ in 0..burners {
+    let notes = std::env::temp_dir().join(format!("spry-bench-{}", std::process::id()));
+    std::fs::create_dir_all(&notes)?;
+    let mut kids = Burners { kids: Vec::new(), notes, steps: vec![0; burners] };
+    for i in 0..burners {
         let mut burner = std::process::Command::new(&exe);
-        let burner = platform::at_normal_priority(&mut burner).args(["burn", "180"]);
+        let burner =
+            platform::at_normal_priority(&mut burner).args(["burn", "180"]).arg(kids.notes.join(i.to_string()));
         let child = burner.stdin(Stdio::null()).stdout(Stdio::null()).spawn()?;
-        kids.0.push(child);
+        kids.kids.push(child);
     }
     sleep(Duration::from_millis(700));
-    let busy = measure(n, secs);
+    let (busy, front_works_off) = kids.speed_during(|| measure(n, secs));
 
-    let pids: Vec<u32> = kids.0.iter().map(|c| c.id()).collect();
+    let pids: Vec<u32> = kids.kids.iter().map(|c| c.id()).collect();
     let saved: Vec<(u32, Saved)> = pids.iter().filter_map(|p| platform::save(*p).ok().map(|s| (*p, s))).collect();
-    for (pid, s) in &saved {
-        let _ = platform::apply(*pid, s, true);
-    }
-    sleep(Duration::from_millis(300));
-    let eased = measure(n, secs);
+    let hold = |how: Hold| {
+        for (pid, s) in &saved {
+            let _ = platform::hold(*pid, s, how);
+        }
+        sleep(Duration::from_millis(300));
+    };
+    hold(Hold::Deep);
+    let (eased, front_works_held) = kids.speed_during(|| measure(n, secs));
 
     let pulsed = if cfg!(unix) {
         let pulse = Pulse::new();
@@ -173,9 +229,35 @@ pub fn run(secs: f64, burners: usize) -> std::io::Result<Report> {
         None
     };
 
+    // The other side of the trade: the app in front rests now, and the held apps are timed.
+    let rest = || sleep(Duration::from_secs_f64(secs / 2.0));
+    let ((), front_rests_held) = kids.speed_during(rest);
+    let front_rests_pulsed = if cfg!(unix) {
+        let pulse = Pulse::new();
+        pulse.set(pids.clone());
+        sleep(Duration::from_millis(300));
+        let ((), speed) = kids.speed_during(rest);
+        drop(pulse);
+        Some(speed)
+    } else {
+        None
+    };
+    hold(Hold::Lent);
+    let ((), front_rests_lent) = kids.speed_during(rest);
     for (pid, s) in &saved {
         let _ = platform::restore(*pid, s);
     }
+    sleep(Duration::from_millis(300));
+    let ((), front_rests_off) = kids.speed_during(rest);
+
+    let background = Background {
+        front_works_off,
+        front_works_held,
+        front_rests_off,
+        front_rests_held,
+        front_rests_pulsed,
+        front_rests_lent,
+    };
     Ok(Report {
         os: std::env::consts::OS,
         cores: cores(),
@@ -186,6 +268,7 @@ pub fn run(secs: f64, burners: usize) -> std::io::Result<Report> {
         busy,
         eased,
         pulsed,
+        background,
         ease_text: platform::EASE_TEXT,
     })
 }
@@ -219,4 +302,18 @@ pub fn print(r: &Report) {
             r.kept_free, r.cores
         );
     }
+
+    let b = &r.background;
+    let share = |speed: f64, of: f64| 100.0 * speed / of.max(0.001);
+    println!("\nWhat that costs the apps that are held (their own speed, with Spry off = 100%):");
+    println!("  {:<46}{:>5.0}%", "while the app in front works", share(b.front_works_held, b.front_works_off));
+    println!(
+        "  {:<46}{:>5.0}%",
+        "while it rests, held anyway (Spry before 0.3)",
+        share(b.front_rests_held, b.front_rests_off)
+    );
+    if let Some(pulsed) = b.front_rests_pulsed {
+        println!("  {:<46}{:>5.0}%", "the same with pulses", share(pulsed, b.front_rests_off));
+    }
+    println!("  {:<46}{:>5.0}%", "while it rests, now: the time is lent", share(b.front_rests_lent, b.front_rests_off));
 }

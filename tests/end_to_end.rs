@@ -1,17 +1,24 @@
 //! The real program from start to finish: it eases a busy background process, shows it on
 //! the dashboard API, puts it back when asked to quit, and `spry rescue` cleans up after a kill.
+//! And the other side: while the app in front rests the held apps run at full speed, and the
+//! hold is back within seconds when it works again.
 
 use spry::platform;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::Mutex;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
 const SPRY: &str = env!("CARGO_BIN_EXE_spry");
 const BUSY_NAME: &str = "sprybusy-test";
+const FRONT_NAME: &str = "spryfront-test";
+
+/// One whole-program test at a time: each starts its own Spry and its own busy processes.
+static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
 
 struct Kill(Child);
 
@@ -28,16 +35,20 @@ impl Drop for Kill {
 struct Orphan(u32);
 
 impl Orphan {
-    fn find() -> Option<u32> {
-        let mut sys = System::new().ok()?;
+    /// Every running process whose name starts with `name`.
+    fn find(name: &str) -> Vec<u32> {
+        let Ok(mut sys) = System::new() else { return Vec::new() };
         sys.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing());
         sys.processes()
             .iter()
-            .find(|(_, p)| p.name().to_string_lossy().starts_with(BUSY_NAME))
+            .filter(|(_, p)| p.name().to_string_lossy().starts_with(name))
             .map(|(pid, _)| pid.as_u32())
+            .collect()
     }
 
     fn start(exe: &Path) -> Self {
+        let name = exe.file_stem().expect("a file name").to_string_lossy().to_string();
+        let already = Self::find(&name);
         // The shell starts the process and exits at once.
         #[cfg(windows)]
         let mut shell = {
@@ -58,7 +69,7 @@ impl Orphan {
         assert!(status.success());
         let mut pid = None;
         wait_until("the busy process runs", 15, || {
-            pid = Self::find();
+            pid = Self::find(&name).into_iter().find(|pid| !already.contains(pid));
             pid.is_some()
         });
         sleep(Duration::from_millis(300));
@@ -122,7 +133,7 @@ fn report() -> String {
         status["held"],
         status["refused"],
         busy,
-        Orphan::find().and_then(platform::read_level),
+        Orphan::find(BUSY_NAME).first().copied().and_then(platform::read_level),
     )
 }
 
@@ -143,6 +154,7 @@ fn start_spry(home: &Path, port: u16) -> Kill {
 
 #[test]
 fn eases_shows_restores_and_rescues() {
+    let _alone = ONE_AT_A_TIME.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let home: PathBuf = std::env::temp_dir().join(format!("spry-e2e-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&home);
     std::fs::create_dir_all(&home).unwrap();
@@ -197,6 +209,110 @@ fn eases_shows_restores_and_rescues() {
     assert!(said.starts_with("Put ") && !said.starts_with("Put 0 "), "rescue says what it did, it said: {said}");
 
     drop(busy);
+    sleep(Duration::from_millis(300));
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// Held apps are lent the processor while the app in front rests, and the hold is back
+/// within three seconds when it works again. The app in front is a stand-in the test can
+/// stop and start, named to Spry with SPRY_FRONT_PID, so this also runs without a screen.
+#[test]
+fn lends_while_the_front_app_rests_and_holds_again_when_it_works() {
+    let _alone = ONE_AT_A_TIME.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let home: PathBuf = std::env::temp_dir().join(format!("spry-lend-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    std::fs::create_dir_all(&home).unwrap();
+    let port = TcpListener::bind(("127.0.0.1", 0)).unwrap().local_addr().unwrap().port();
+    std::fs::write(home.join("config.json"), "{}").unwrap();
+
+    // One busy app in front, and enough busy apps behind it to fill every processor thread.
+    let copy = |name: &str| {
+        let exe = home.join(format!("{name}{}", std::env::consts::EXE_SUFFIX));
+        std::fs::copy(SPRY, &exe).unwrap();
+        exe
+    };
+    let (front_exe, busy_exe) = (copy(FRONT_NAME), copy(BUSY_NAME));
+    let front = Orphan::start(&front_exe);
+    let threads = std::thread::available_parallelism().map_or(2, |n| n.get()).clamp(2, 8);
+    let backs: Vec<Orphan> = (0..threads).map(|_| Orphan::start(&busy_exe)).collect();
+    let before: Vec<(u32, i64, Option<u32>)> = backs
+        .iter()
+        .map(|b| (b.0, platform::read_level(b.0).expect("read the starting state"), platform::cpus_open(b.0)))
+        .collect();
+
+    // What the operating system itself reports: is this process held back right now?
+    let by_threads = cfg!(not(target_os = "macos")) && platform::kept_free_count() > 0;
+    let held = |(pid, level, open): &(u32, i64, Option<u32>)| {
+        if by_threads {
+            platform::cpus_open(*pid) < *open
+        } else {
+            platform::read_level(*pid).is_some_and(|now| now != *level)
+        }
+    };
+    // On Linux and Windows without kept-free threads lending shows only in Spry's own report.
+    let shows = by_threads || cfg!(target_os = "macos");
+    let level_of = |token: &str, pid: u32| -> Option<String> {
+        let (200, body) = http(port, "GET", &format!("/api/status?t={token}"))? else { return None };
+        let status: serde_json::Value = serde_json::from_str(&body).ok()?;
+        let row = status["held"].as_array()?.iter().find(|h| h["pid"] == pid)?;
+        row["level"].as_str().map(str::to_string)
+    };
+
+    // 1. The app in front works: the busy apps behind it are held.
+    let mut cmd = spry(&home, port, &["run", "--no-tray"]);
+    let child = cmd.env("SPRY_FRONT_PID", front.0.to_string()).stdout(Stdio::null()).spawn().expect("start spry");
+    let mut running = Kill(child);
+    wait_until("the dashboard answers", 20, || http(port, "GET", "/").is_some());
+    *RUNNING.lock().unwrap() = Some((port, home.clone()));
+    let token = std::fs::read_to_string(home.join("token")).unwrap();
+    wait_until("every busy app is held while the app in front works", 40, || {
+        before.iter().all(|b| level_of(&token, b.0).as_deref() == Some("ease") && (!shows || held(b)))
+    });
+
+    // 2. It rests: they get the processor back, all of it.
+    platform::suspend(front.0).expect("the app in front stops working");
+    wait_until("the busy apps are lent the idle time", 40, || {
+        before.iter().all(|b| level_of(&token, b.0).as_deref() == Some("lent") && (!shows || !held(b)))
+    });
+    if cfg!(target_os = "macos") {
+        for (pid, level, _) in &before {
+            assert_eq!(platform::read_level(*pid), Some(*level), "lent: nothing of the hold is left on macOS");
+        }
+    }
+
+    // 3. It works again: the hold is back within three seconds.
+    platform::resume(front.0).expect("the app in front works again");
+    let resumed = Instant::now();
+    let limit = Duration::from_secs(3);
+    let back = loop {
+        let done = if shows {
+            before.iter().all(held)
+        } else {
+            before.iter().all(|b| level_of(&token, b.0).as_deref() == Some("ease"))
+        };
+        if done {
+            break resumed.elapsed();
+        }
+        assert!(resumed.elapsed() < Duration::from_secs(20), "the hold never came back\n{}", report());
+        sleep(Duration::from_millis(20));
+    };
+    println!("the hold was back {} ms after the app in front started to work", back.as_millis());
+    if let Some(folder) = std::env::var_os("SPRY_NOTES") {
+        let _ = std::fs::create_dir_all(&folder);
+        let _ = std::fs::write(Path::new(&folder).join("hold-back-ms.txt"), back.as_millis().to_string());
+    }
+    // Spry's own report is renewed every two seconds, so only the system's answer is timed.
+    assert!(!shows || back < limit, "the hold took {} ms to come back, the limit is 3000", back.as_millis());
+
+    // 4. Quitting puts everything back exactly.
+    assert_eq!(http(port, "POST", &format!("/api/quit?t={token}")).map(|r| r.0), Some(200));
+    wait_until("spry has quit", 15, || running.0.try_wait().ok().flatten().is_some());
+    for (pid, level, open) in &before {
+        assert_eq!(platform::read_level(*pid), Some(*level), "quitting must put every process back exactly");
+        assert_eq!(platform::cpus_open(*pid), *open, "and open every processor thread again");
+    }
+
+    drop((front, backs));
     sleep(Duration::from_millis(300));
     let _ = std::fs::remove_dir_all(&home);
 }

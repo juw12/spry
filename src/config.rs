@@ -22,6 +22,8 @@ pub struct Config {
     pub pressure_mem_free: f32,
     /// Under pressure, also pause-and-resume the heaviest background processes in short pulses.
     pub strong: bool,
+    /// While the app in front rests, held apps run at full speed.
+    pub lend: bool,
     pub trim_memory: bool,
     pub freeze_after_secs: u64,
     pub never_slow: Vec<String>,
@@ -36,8 +38,10 @@ impl Default for Config {
             hog_percent: 10.0,
             pressure_cpu: 80.0,
             pressure_mem_free: 15.0,
-            // Linux has no reversible priority lever for a normal user, so pulses do the work there.
-            strong: cfg!(target_os = "linux"),
+            // Since part of the processor is kept free under pressure, pulses add next to
+            // nothing (2.36x without, 2.37x with on Linux) and cost held apps most of their time.
+            strong: false,
+            lend: true,
             trim_memory: true,
             freeze_after_secs: 30,
             never_slow: vec![],
