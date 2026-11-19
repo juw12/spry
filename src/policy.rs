@@ -242,7 +242,7 @@ pub fn decide(cfg: &Config, snap: &Snapshot, st: &mut PolicyState, now: Instant)
     if !rests {
         st.rest_since = None;
     }
-    let lend = cfg.lend && rests && now.duration_since(*st.rest_since.get_or_insert(now)) >= LEND_AFTER;
+    let lend = !cfg.resource_saver && cfg.lend && rests && now.duration_since(*st.rest_since.get_or_insert(now)) >= LEND_AFTER;
 
     let mut plan = Plan { family, deep: st.pressure, ..Plan::default() };
 
@@ -275,7 +275,7 @@ pub fn decide(cfg: &Config, snap: &Snapshot, st: &mut PolicyState, now: Instant)
         let busy = fg_known && p.cpu >= cfg.hog_percent && !just_left;
         if rule == Rule::Always || busy || (fg_known && st.sticky.contains(&p.pid)) {
             st.sticky.insert(p.pid);
-            let pulse = cfg.strong && st.pressure && (p.cpu >= PULSE_CPU || st.pulsed.contains(&p.pid));
+            let pulse = !cfg.resource_saver && cfg.strong && st.pressure && (p.cpu >= PULSE_CPU || st.pulsed.contains(&p.pid));
             if pulse {
                 st.pulsed.insert(p.pid);
             }
@@ -353,6 +353,31 @@ mod tests {
         assert!(!plan.levels.contains_key(&30), "a quiet process is left alone");
         assert!(!plan.levels.contains_key(&20) && !plan.levels.contains_key(&21), "front app and its children");
         assert!(!plan.levels.contains_key(&10) && !plan.levels.contains_key(&40));
+    }
+
+    #[test]
+    fn saver_does_not_lend_or_pulse_and_leaves_the_foreground_and_never_rules_alone() {
+        let cfg = Config { resource_saver: true, strong: true, lend: true, ..Config::default() };
+        let mut snap = desk(Some(20));
+        snap.cpu_total = 90.0;
+        for proc in &mut snap.procs {
+            if proc.pid == 20 || proc.pid == 21 {
+                proc.cpu_now = 0.0;
+            }
+        }
+        let t = Instant::now();
+        let mut st = PolicyState::default();
+        for secs in [0, 1, 5, 10, 20] {
+            let plan = decide(&cfg, &snap, &mut st, t + Duration::from_secs(secs));
+            assert_eq!(plan.levels.get(&31), Some(&Level::Ease));
+            assert!(!plan.levels.contains_key(&20) && !plan.levels.contains_key(&21));
+        }
+        let never = Config { never_slow: vec!["browser".into()], ..cfg.clone() };
+        assert!(!run(&never, &snap).levels.contains_key(&31));
+        // Disabling the profile does not erase the original lend/strong settings.
+        let normal = Config { resource_saver: false, ..cfg };
+        decide(&normal, &snap, &mut st, t + Duration::from_secs(21));
+        assert_eq!(decide(&normal, &snap, &mut st, t + Duration::from_secs(28)).levels.get(&31), Some(&Level::Lent));
     }
 
     #[test]

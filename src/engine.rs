@@ -276,7 +276,12 @@ impl Pulse {
                     }
                     pids.is_empty()
                 };
-                thread::sleep(if idle { Duration::from_millis(400) } else { PULSE_RUN });
+                if idle {
+                    // Sleep until the list changes or Spry quits; an empty list needs no periodic wakeups.
+                    thread::park();
+                } else {
+                    thread::sleep(PULSE_RUN);
+                }
             }
         });
         Pulse { list, stop, thread: Some(thread) }
@@ -286,6 +291,9 @@ impl Pulse {
         let mut list = self.list.lock().unwrap();
         if *list != pids {
             *list = pids;
+            if let Some(t) = &self.thread {
+                t.thread().unpark();
+            }
         }
     }
 }
@@ -294,6 +302,7 @@ impl Drop for Pulse {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
         if let Some(t) = self.thread.take() {
+            t.thread().unpark();
             let _ = t.join();
         }
     }
@@ -598,6 +607,20 @@ fn status_json(
     .to_string()
 }
 
+/// Leave the OFF reference measurement at the original cadence. Foreground checks stay independent
+/// of these slower, full-machine scans, so a switch of app can still release its existing holds.
+fn scan_interval(saver: bool, watched: bool, recording: bool, cpu: f32) -> Duration {
+    if recording {
+        SLOW
+    } else if saver {
+        Duration::from_secs(if watched || cpu >= CALM_BELOW_CPU { 4 } else { 8 })
+    } else if watched || cpu >= CALM_BELOW_CPU {
+        SLOW
+    } else {
+        CALM
+    }
+}
+
 /// Runs until `shared.quit` is set, then restores every process it touched.
 pub fn run_loop(shared: &Shared) {
     let mut sampler = Sampler::new();
@@ -614,7 +637,7 @@ pub fn run_loop(shared: &Shared) {
         let cfg = shared.cfg.lock().unwrap().clone();
         let watched = shared.watched.lock().unwrap().is_some_and(|t| t.elapsed() < WATCHED_FOR);
         let recording = shared.reference.lock().unwrap().active();
-        let every = if watched || recording || snap.cpu_total >= CALM_BELOW_CPU { SLOW } else { CALM };
+        let every = scan_interval(cfg.enabled && cfg.resource_saver, watched, recording, snap.cpu_total);
         let slow = measured.is_none_or(|t| t.elapsed() >= every);
         if slow {
             snap = sampler.sample();
@@ -647,4 +670,19 @@ pub fn run_loop(shared: &Shared) {
         thread::sleep(FAST);
     }
     engine.restore_all();
+}
+
+#[cfg(test)]
+mod cadence_tests {
+    use super::*;
+
+    #[test]
+    fn saver_scans_less_often_but_does_not_change_the_reference() {
+        assert_eq!(scan_interval(true, true, false, 10.0), Duration::from_secs(4));
+        assert_eq!(scan_interval(true, false, false, 10.0), Duration::from_secs(8));
+        assert_eq!(scan_interval(true, false, false, 90.0), Duration::from_secs(4));
+        assert_eq!(scan_interval(true, false, true, 10.0), SLOW);
+        assert_eq!(scan_interval(false, true, false, 10.0), SLOW);
+        assert_eq!(scan_interval(false, false, false, 10.0), CALM);
+    }
 }

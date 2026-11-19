@@ -203,6 +203,18 @@ held, went ahead of them. With Spry running for real those jobs would be held as
 them would share what the app in front leaves. That case has not been measured. The app in front
 gained 1.96x to 2.21x on that PC (90% to 99% of a quiet machine) in the same six readings.
 
+### Resource Saver
+
+In **Settings → Resource Saver**, Spry favors lower overhead over finishing background work quickly.
+While Spry is on, busy background apps keep their lower CPU priority rather than being lent idle time.
+Automatic pulses stay off; foreground and protected apps are still exempt. Your original Lend and Strong
+settings are kept for when you uncheck Saver. The open dashboard refreshes about every four seconds;
+on a calm machine with no dashboard viewer, full scans are about eight seconds apart. Recording the OFF
+reference still uses the regular cadence. Close the window to release its web view while keeping Spry on.
+
+This reduces Spry's own monitoring work. It is not a wattage cap or a promise of longer battery life.
+On macOS, Spry does not evict other apps' memory; the operating system manages compression and swap.
+
 ## What it cannot do
 
 - It does not add memory or make the processor faster. It decides who goes first. Work in the

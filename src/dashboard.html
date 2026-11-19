@@ -327,6 +327,7 @@ td.num { font-family: var(--mono); font-size: 13px; }
     <section class="view" data-view="settings" hidden>
       <div class="page-head"><div><h1>Settings</h1><p id="counts"></p></div><div class="actions"><button id="quit">Quit Spry</button></div></div>
       <div class="row"><input type="checkbox" id="autostart"><label for="autostart">Start Spry when I sign in</label></div>
+      <div class="row"><input type="checkbox" id="saver"><label for="saver">Resource Saver<br><span class="sub">While Spry is on, keep busy background apps at lower priority even when the foreground rests. Spry scans less often and skips automatic pulses. Background work may take longer.</span></label></div>
       <div class="row"><input type="checkbox" id="strong"><label for="strong">Strong mode<br><span class="sub">When the whole processor is busy, also pause the heaviest background processes in short pulses (120 ms paused, 80 ms running). They take longer to finish.</span></label></div>
       <div class="row"><input type="checkbox" id="lend"><label for="lend">Lend idle time<br><span class="sub">While the app in front rests (almost no processor use for 6 seconds), held apps run at full speed. The hold is back when it works again. Apps with the rule “Always slow” or “Freeze” stay held.</span></label></div>
       <div class="row" id="trim-row" hidden><input type="checkbox" id="trim"><label for="trim">Give memory back when it runs low<br><span class="sub">Asks large background apps to release memory they are not using. They may load a moment longer when you return to them.</span></label></div>
@@ -511,8 +512,9 @@ function paintTrend() {
 }
 window.addEventListener("resize", paintTrend);
 
-function render(s) {
+function render(s, fresh = true) {
   state = s;
+  const saver = s.enabled && s.config.resource_saver;
   const reference = s.off_reference || {};
   const recording = Boolean(reference.recording);
   $("record-reference").textContent = recording ? "Cancel recording" : reference.last ? "Refresh OFF reference" : "Record OFF reference";
@@ -520,7 +522,7 @@ function render(s) {
   $("ref-note").textContent = recording ? `Recording OFF · ${reference.left}s left. Normal operation resumes automatically.` :
     [reference.message, at ? `Dashed line: OFF readings from ${at}, not a prediction of this workload.` :
       "Release holds for one minute to overlay a measured OFF trace. Your settings won’t change."].filter(Boolean).join(" ");
-  drawTrend(s);
+  if (fresh) drawTrend(s);
   const paused = s.paused_secs > 0;
   const pill = $("pill");
   if (recording) { pill.className = "pill warn"; pill.textContent = "No holds · recording OFF reference"; }
@@ -528,7 +530,7 @@ function render(s) {
   else if (paused) { pill.className = "pill warn"; pill.textContent = "Paused, back in " + clock(s.paused_secs); }
   else if (!s.fg_known) { pill.className = "pill warn"; pill.textContent = "On, rules only"; }
   else { pill.className = "pill"; pill.textContent = "On" + (s.fg ? ", " + s.fg + " is in front" : ""); }
-  $("side-state").textContent = recording ? "Recording OFF" : !s.enabled ? "Switched off" : paused ? "Paused" : "On";
+  $("side-state").textContent = recording ? "Recording OFF" : !s.enabled ? "Switched off" : paused ? "Paused" : saver ? "On · Resource Saver" : "On";
   $("side-front").textContent = recording || !s.enabled || paused ? "Nothing is held back"
     : !s.fg_known ? "Rules only" : s.fg ? s.fg + " is in front" : "\u00a0";
   $("n-held").textContent = s.held.length || "";
@@ -579,7 +581,9 @@ function render(s) {
 
   // Do not rebuild the list while someone is choosing a rule in it.
   const apps = $("apps");
-  if (!apps.contains(document.activeElement) && Date.now() > busyUntil) {
+  if (saver && apps.closest(".view").hidden) {
+    if (apps.firstChild) apps.replaceChildren(); // no hidden options or controls to keep rebuilding
+  } else if (!apps.contains(document.activeElement) && Date.now() > busyUntil) {
     apps.innerHTML = "";
     apps.append(el("tr", null, el("th", { textContent: "App" }), el("th", { className: "num", textContent: "Processor" }),
       el("th", { className: "num hide-narrow", textContent: "Memory" }), el("th", { textContent: "Now" }), el("th", { textContent: "Rule" })));
@@ -611,9 +615,10 @@ function render(s) {
     }
   }
 
-  for (const [id, on] of [["autostart", s.autostart], ["strong", s.config.strong], ["lend", s.config.lend], ["trim", s.config.trim_memory]]) {
+  for (const [id, on] of [["autostart", s.autostart], ["saver", s.config.resource_saver], ["strong", !s.config.resource_saver && s.config.strong], ["lend", !s.config.resource_saver && s.config.lend], ["trim", s.config.trim_memory]]) {
     if (document.activeElement !== $(id)) $(id).checked = on;
   }
+  $("strong").disabled = $("lend").disabled = Boolean(s.config.resource_saver);
   $("trim-row").hidden = !s.can_trim;
   $("ease-text").textContent = s.ease_text;
   $("version").textContent = "Spry " + s.version;
@@ -675,6 +680,7 @@ $("record-reference").onclick = async () => {
   finally { $("record-reference").disabled = false; }
 };
 $("apps-more").onclick = () => { showQuiet = !showQuiet; busyUntil = 0; if (state) render(state); };
+$("saver").onchange = e => saveConfig(cfg => { cfg.resource_saver = e.target.checked; });
 $("strong").onchange = e => saveConfig(cfg => { cfg.strong = e.target.checked; });
 $("lend").onchange = e => saveConfig(cfg => { cfg.lend = e.target.checked; });
 $("trim").onchange = e => saveConfig(cfg => { cfg.trim_memory = e.target.checked; });
@@ -804,6 +810,7 @@ function go(view) {
   for (const b of document.querySelectorAll(".nav button")) b.classList.toggle("active", b.dataset.go === view);
   if (location.hash.slice(1) !== view) history.replaceState(null, "", "#" + view);
   window.scrollTo(0, 0);
+  if (state && state.config.resource_saver) render(state, false);
   if (view === "overview") paintTrend();
 }
 for (const b of document.querySelectorAll(".nav button")) b.onclick = () => go(b.dataset.go);
@@ -827,8 +834,20 @@ $("theme").onclick = () => {
 };
 theme();
 
-refresh();
-setInterval(refresh, 2000);
+// No polls while the document is hidden. With Saver on match the slower live sample rate;
+// the OFF reference continues recording in the engine even if this window is closed.
+let timer, pollId = 0;
+async function poll() {
+  const id = ++pollId;
+  clearTimeout(timer);
+  if (document.hidden) return;
+  await refresh();
+  if (id !== pollId || document.hidden) return;
+  const saving = state?.enabled && state?.config?.resource_saver && !state?.off_reference?.recording;
+  timer = setTimeout(poll, saving ? 4000 : 2000);
+}
+document.addEventListener("visibilitychange", poll);
+poll();
 </script>
 </body>
 </html>
