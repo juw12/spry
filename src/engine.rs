@@ -15,6 +15,10 @@ use sysinfo::{Disks, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 /// How often the front app is checked, and how often the whole machine is measured.
 const FAST: Duration = Duration::from_millis(500);
 const SLOW: Duration = Duration::from_secs(2);
+/// While the machine is calm and nobody is looking at the dashboard, measuring can wait longer.
+const CALM: Duration = Duration::from_secs(5);
+const CALM_BELOW_CPU: f32 = 35.0;
+const WATCHED_FOR: Duration = Duration::from_secs(10);
 /// One pulse: paused for this long, then running for this long.
 pub const PULSE_STOP: Duration = Duration::from_millis(120);
 pub const PULSE_RUN: Duration = Duration::from_millis(80);
@@ -29,6 +33,8 @@ pub struct Shared {
     pub held: AtomicUsize,
     pub autostart: AtomicBool,
     pub update: Mutex<Option<String>>,
+    /// When the dashboard last asked for the numbers.
+    pub watched: Mutex<Option<Instant>>,
 }
 
 impl Shared {
@@ -42,6 +48,7 @@ impl Shared {
             held: AtomicUsize::new(0),
             autostart: AtomicBool::new(crate::install::is_installed()),
             update: Mutex::new(None),
+            watched: Mutex::new(None),
         })
     }
 
@@ -92,7 +99,9 @@ impl Sampler {
     fn refresh(&mut self) {
         let kind =
             ProcessRefreshKind::nothing().with_cpu().with_memory().with_user(UpdateKind::OnlyIfNotSet).without_tasks();
-        self.sys.refresh_cpu_usage();
+        if !cfg!(windows) {
+            self.sys.refresh_cpu_usage();
+        }
         self.sys.refresh_memory();
         self.sys.refresh_processes_specifics(ProcessesToUpdate::All, true, kind);
     }
@@ -139,7 +148,7 @@ impl Sampler {
         Snapshot {
             procs,
             fg: None,
-            cpu_total: self.sys.global_cpu_usage(),
+            cpu_total: platform::cpu_total().unwrap_or_else(|| self.sys.global_cpu_usage()),
             mem_free_pct: self.sys.available_memory() as f32 * 100.0 / total as f32,
             mem_total: total,
             self_pid: self.self_pid,
@@ -505,7 +514,9 @@ pub fn run_loop(shared: &Shared) {
 
     while !shared.quit.load(Ordering::Relaxed) {
         let cfg = shared.cfg.lock().unwrap().clone();
-        let slow = measured.is_none_or(|t| t.elapsed() >= SLOW);
+        let watched = shared.watched.lock().unwrap().is_some_and(|t| t.elapsed() < WATCHED_FOR);
+        let every = if watched || snap.cpu_total >= CALM_BELOW_CPU { SLOW } else { CALM };
+        let slow = measured.is_none_or(|t| t.elapsed() >= every);
         if slow {
             snap = sampler.sample();
             measured = Some(Instant::now());

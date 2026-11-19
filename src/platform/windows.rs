@@ -222,6 +222,50 @@ pub fn forget(pid: u32) {
 }
 
 /// A number that shows the current state, for tests: the priority class.
+/// Runs the calling process at normal priority until dropped, if it was started lower.
+pub struct NormalPriority(u32);
+
+impl NormalPriority {
+    pub fn hold() -> Self {
+        use windows_sys::Win32::System::Threading::GetCurrentProcess;
+        unsafe {
+            let me = GetCurrentProcess();
+            let class = GetPriorityClass(me);
+            if class != 0 && rank(class) < 2 && SetPriorityClass(me, NORMAL_PRIORITY_CLASS) != 0 {
+                return NormalPriority(class);
+            }
+        }
+        NormalPriority(0)
+    }
+}
+
+impl Drop for NormalPriority {
+    fn drop(&mut self) {
+        use windows_sys::Win32::System::Threading::GetCurrentProcess;
+        if self.0 != 0 {
+            unsafe { SetPriorityClass(GetCurrentProcess(), self.0) };
+        }
+    }
+}
+
+/// How busy the whole machine was since the last call, in percent. One cheap system call.
+pub fn cpu_total() -> Option<f32> {
+    use windows_sys::Win32::Foundation::FILETIME;
+    use windows_sys::Win32::System::Threading::GetSystemTimes;
+    static LAST: Mutex<Option<(u64, u64)>> = Mutex::new(None);
+    let zero = FILETIME { dwLowDateTime: 0, dwHighDateTime: 0 };
+    let (mut idle, mut kernel, mut user) = (zero, zero, zero);
+    if unsafe { GetSystemTimes(&mut idle, &mut kernel, &mut user) } == 0 {
+        return None;
+    }
+    let ticks = |t: FILETIME| ((t.dwHighDateTime as u64) << 32) | t.dwLowDateTime as u64;
+    // Kernel time includes idle time.
+    let now = (ticks(idle), ticks(kernel) + ticks(user));
+    let before = LAST.lock().ok()?.replace(now)?;
+    let (idle, all) = (now.0.saturating_sub(before.0), now.1.saturating_sub(before.1));
+    (all > 0).then(|| (100.0 * (1.0 - idle as f64 / all as f64)).clamp(0.0, 100.0) as f32)
+}
+
 pub fn read_level(pid: u32) -> Option<i64> {
     let handle = open(pid, PROCESS_QUERY_LIMITED_INFORMATION).ok()?;
     let class = unsafe { GetPriorityClass(handle.0) };

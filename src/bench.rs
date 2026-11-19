@@ -122,12 +122,16 @@ impl Drop for Burners {
 
 pub fn run(secs: f64, burners: usize) -> std::io::Result<Report> {
     let exe = std::env::current_exe()?;
+    // The measuring process stands in for the app in front, the burners for normal background apps.
+    let _normal = platform::NormalPriority::hold();
     let n = calibrate();
     let quiet = measure(n, secs);
 
     let mut kids = Burners(Vec::new());
     for _ in 0..burners {
-        let child = platform::command(&exe).args(["burn", "180"]).stdin(Stdio::null()).stdout(Stdio::null()).spawn()?;
+        let mut burner = std::process::Command::new(&exe);
+        let burner = platform::at_normal_priority(&mut burner).args(["burn", "180"]);
+        let child = burner.stdin(Stdio::null()).stdout(Stdio::null()).spawn()?;
         kids.0.push(child);
     }
     sleep(Duration::from_millis(700));

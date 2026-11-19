@@ -30,6 +30,20 @@ pub fn resume(pid: u32) -> io::Result<()> {
     signal(pid, libc::SIGCONT)
 }
 
+/// Only Windows starts child processes low when the parent runs low; nothing to do here.
+pub struct NormalPriority;
+
+impl NormalPriority {
+    pub fn hold() -> Self {
+        NormalPriority
+    }
+}
+
+/// Only Windows has a cheaper way than the general one, so there is no answer here.
+pub fn cpu_total() -> Option<f32> {
+    None
+}
+
 pub fn trim(_pid: u32) -> io::Result<()> {
     Err(io::Error::other("not available on this system"))
 }

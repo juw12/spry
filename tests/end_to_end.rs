@@ -42,7 +42,9 @@ impl Orphan {
         #[cfg(windows)]
         let mut shell = {
             let mut cmd = Command::new("cmd");
-            cmd.args(["/c", "start", "", "/b"]).arg(exe).args(["burn", "180"]);
+            // "/normal": a child of a low-priority shell would start low, and then
+            // there would be nothing for Spry to lower (CI runners start everything low).
+            cmd.args(["/c", "start", "", "/b", "/normal"]).arg(exe).args(["burn", "180"]);
             cmd
         };
         #[cfg(unix)]

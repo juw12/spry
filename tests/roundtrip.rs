@@ -12,7 +12,9 @@ struct Burner(Child);
 
 impl Burner {
     fn start() -> Self {
-        let child = Command::new(env!("CARGO_BIN_EXE_spry"))
+        // At normal priority, also when the test itself was started lower (CI runners are).
+        let mut busy = Command::new(env!("CARGO_BIN_EXE_spry"));
+        let child = platform::at_normal_priority(&mut busy)
             .args(["burn", "120"])
             .stdin(Stdio::null())
             .stdout(Stdio::null())

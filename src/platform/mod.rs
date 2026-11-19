@@ -31,6 +31,17 @@ pub fn command<S: AsRef<std::ffi::OsStr>>(program: S) -> std::process::Command {
     cmd
 }
 
+/// Starts the program at normal priority, without a console window. Windows hands a low
+/// priority on to child processes, and a stand-in for a normal app must not start low.
+pub fn at_normal_priority(cmd: &mut std::process::Command) -> &mut std::process::Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000 | 0x20); // CREATE_NO_WINDOW | NORMAL_PRIORITY_CLASS
+    }
+    cmd
+}
+
 pub fn open_url(url: &str) {
     let _ = if cfg!(windows) {
         command("rundll32").args(["url.dll,FileProtocolHandler", url]).spawn()

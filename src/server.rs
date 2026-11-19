@@ -49,7 +49,10 @@ fn handle(mut request: Request, shared: &Shared) {
     let (code, kind, body): (u16, &str, String) = match path {
         _ if !authed => (403, "text/plain", "Open Spry from its tray icon, or run: spry open".into()),
         "/" => (200, "text/html; charset=utf-8", DASHBOARD.replace("__TOKEN__", &shared.token)),
-        "/api/status" => (200, JSON, shared.status.lock().unwrap().clone()),
+        "/api/status" => {
+            *shared.watched.lock().unwrap() = Some(Instant::now());
+            (200, JSON, shared.status.lock().unwrap().clone())
+        }
         "/api/config" if post => {
             let mut text = String::new();
             let _ = request.as_reader().read_to_string(&mut text);
