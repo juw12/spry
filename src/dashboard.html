@@ -66,7 +66,7 @@ td { padding: 7px 8px 7px 0; border-bottom: 1px solid var(--line); vertical-alig
 tr:last-child td { border-bottom: 0; }
 .num { text-align: right; white-space: nowrap; }
 th.num { padding-right: 8px; }
-.name { overflow-wrap: anywhere; }
+.name { overflow-wrap: anywhere; min-width: 7em; }
 .chip { display: inline-block; padding: 1px 8px; border-radius: 5px; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
 .chip.front { background: var(--green-soft); color: var(--green); }
 .chip.ease { background: var(--blue-soft); color: var(--blue); }
@@ -89,7 +89,9 @@ footer button { font-size: 13px; padding: 3px 9px; }
   .hide-narrow { display: none; }
   main { padding: 14px 12px 40px; }
   section { padding: 14px; }
-  select { max-width: 150px; }
+  select { max-width: 100px; padding-left: 6px; padding-right: 2px; }
+  td, th { padding-right: 6px; }
+  .name { min-width: 5.5em; }
 }
 @media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
 </style>
@@ -108,7 +110,7 @@ footer button { font-size: 13px; padding: 3px 9px; }
   <div class="meters">
     <div class="meter"><div class="label">Processor in use</div><div class="value" id="cpu">–</div><div class="bar"><i id="cpu-bar"></i></div></div>
     <div class="meter"><div class="label">Memory in use</div><div class="value" id="mem">–</div><div class="bar"><i id="mem-bar"></i></div></div>
-    <div class="meter"><div class="label">Disk in use</div><div class="value" id="disk">–</div><div class="bar"><i id="disk-bar"></i></div></div>
+    <div class="meter"><div class="label">Disk space</div><div class="value" id="disk">–</div><div class="bar"><i id="disk-bar"></i></div></div>
     <div class="meter"><div class="label">Spry itself</div><div class="value" id="self">–</div><div class="sub" id="self-sub">&nbsp;</div></div>
   </div>
 
@@ -193,6 +195,11 @@ function valueWithUnit(value, unit) {
   return frag;
 }
 const LEVEL = { ease: "Eased", pulse: "Pulsed", freeze: "Frozen", front: "In front" };
+// Share of the whole processor, the same scale as the meter at the top.
+const share = (cpu, cores) => {
+  const pct = cpu / Math.max(1, cores || 1);
+  return pct > 0 && pct < 1 ? "<1%" : Math.round(pct) + "%";
+};
 const LEVEL_HELP = {
   ease: "Runs only when the app in front does not need the processor",
   pulse: "Eased, and paused in short pulses while the machine is under pressure",
@@ -222,7 +229,7 @@ function render(s) {
   }
   $("self").innerHTML = "";
   $("self").append(valueWithUnit(size(s.self_mem), "memory"));
-  $("self-sub").textContent = s.self_cpu.toFixed(1) + "% of one processor core";
+  $("self-sub").textContent = (s.self_cpu / Math.max(1, s.cores || 1)).toFixed(1) + "% of the processor";
 
   const held = $("held");
   held.innerHTML = "";
@@ -240,7 +247,7 @@ function render(s) {
       held.append(el("tr", null,
         el("td", { className: "name", textContent: h.name }),
         el("td", null, el("span", { className: "chip " + h.level, textContent: LEVEL[h.level] || h.level, title: LEVEL_HELP[h.level] || "" })),
-        el("td", { className: "num", textContent: h.cpu.toFixed(0) + "%" }),
+        el("td", { className: "num", textContent: share(h.cpu, s.cores) }),
         el("td", { className: "num hide-narrow", textContent: size(h.mem) }),
         el("td", { className: "num hide-narrow", textContent: since(h.secs) })));
     }
@@ -253,7 +260,10 @@ function render(s) {
     apps.append(el("tr", null, el("th", { textContent: "App" }), el("th", { className: "num", textContent: "Processor" }),
       el("th", { className: "num hide-narrow", textContent: "Memory" }), el("th", { textContent: "Now" }), el("th", { textContent: "Rule" })));
     for (const a of s.apps) {
-      const now = a.state ? el("span", { className: "chip " + a.state, textContent: LEVEL[a.state] }) : "";
+      // The app in front counts with everything it started, and with the app that started it.
+      const same = a.state === "front" && a.name !== s.fg;
+      const now = a.state ? el("span", { className: "chip " + a.state, textContent: same ? "Same app" : LEVEL[a.state],
+        title: same ? "Belongs to the app in front, so it is never held back" : (LEVEL_HELP[a.state] || "") }) : "";
       let rule;
       if (a.protected) {
         rule = el("span", { className: "sub", textContent: "Never touched" });
@@ -264,7 +274,7 @@ function render(s) {
       }
       const label = a.count > 1 ? a.name + " (" + a.count + ")" : a.name;
       apps.append(el("tr", null, el("td", { className: "name", textContent: label }),
-        el("td", { className: "num", textContent: a.cpu.toFixed(0) + "%" }),
+        el("td", { className: "num", textContent: share(a.cpu, s.cores) }),
         el("td", { className: "num hide-narrow", textContent: size(a.mem) }),
         el("td", null, now), el("td", null, rule)));
     }

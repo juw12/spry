@@ -493,6 +493,7 @@ fn status_json(
         "apps": apps,
         "events": engine.events,
         "trims": engine.trims,
+        "cores": crate::bench::cores(),
         "self_cpu": me.map_or(0.0, |p| p.cpu),
         "self_mem": me.map_or(0, |p| p.mem),
         "ease_text": platform::EASE_TEXT,
