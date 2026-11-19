@@ -10,12 +10,24 @@ pub fn port() -> u16 {
     std::env::var("SPRY_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(47633)
 }
 
+/// What Spry is for while it is on.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Mode {
+    /// Use less. Busy background apps stay held for as long as they are in the background, also
+    /// while the app in front rests, and are held the deeper way. The computer does less work.
+    #[default]
+    Saver,
+    /// The app in front first. Busy background apps are held while it works and get the idle
+    /// time back while it rests, so the computer does about as much work as without Spry.
+    Performance,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(default)]
 pub struct Config {
     pub enabled: bool,
-    /// Prefer lower monitoring overhead and background priority to throughput. Off by default.
-    pub resource_saver: bool,
+    pub mode: Mode,
     /// A background process counts as busy above this share of one CPU core (%).
     pub hog_percent: f32,
     /// Whole-machine CPU use (%) that counts as "under pressure".
@@ -37,7 +49,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             enabled: true,
-            resource_saver: false,
+            mode: Mode::Saver,
             hog_percent: 10.0,
             pressure_cpu: 80.0,
             pressure_mem_free: 15.0,

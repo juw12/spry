@@ -2,9 +2,16 @@
 
 # Spry
 
-**Keeps an old computer quick.** Spry watches which app you are using and holds the busy apps
-behind it back, so the one in front gets the processor. While the app in front rests (you read,
-think, or step away), the others get the processor back, so they are not kept waiting for nothing.
+**Makes an old computer use less, and keeps it quick.** Spry watches which app you are using and
+holds the busy apps behind it back. It has two modes:
+
+- **Saver** (the default): busy apps stay held for as long as they are in the background, also while
+  you read, think or step away. The computer does less work, so it uses less processor and stays
+  cooler. Work in the background takes longer.
+- **Performance**: busy background apps are held only while the app in front is working, and get
+  the processor back while it rests. The app in front is quicker; the computer does about as much
+  work as without Spry.
+
 When you switch apps, it switches with you. When Spry stops, everything is exactly as it was.
 
 One small program for **Windows, macOS and Linux**. Free and open source (MIT). No account, no
@@ -203,17 +210,43 @@ held, went ahead of them. With Spry running for real those jobs would be held as
 them would share what the app in front leaves. That case has not been measured. The app in front
 gained 1.96x to 2.21x on that PC (90% to 99% of a quiet machine) in the same six readings.
 
-### Resource Saver
+### Saver and Performance
 
-In **Settings → Resource Saver**, Spry favors lower overhead over finishing background work quickly.
-While Spry is on, busy background apps keep their lower CPU priority rather than being lent idle time.
-Automatic pulses stay off; foreground and protected apps are still exempt. Your original Lend and Strong
-settings are kept for when you uncheck Saver. The open dashboard refreshes about every four seconds;
-on a calm machine with no dashboard viewer, full scans are about eight seconds apart. Recording the OFF
-reference still uses the regular cadence. Close the window to release its web view while keeping Spry on.
+**Settings → What Spry is for** chooses the mode. Until 0.4 Spry only had what is now Performance
+mode; since 0.5 a new install starts in Saver mode.
 
-This reduces Spry's own monitoring work. It is not a wattage cap or a promise of longer battery life.
-On macOS, Spry does not evict other apps' memory; the operating system manages compression and swap.
+In **Saver** mode nothing is lent: a busy background app stays held until you switch back to it.
+It is held the deeper way all the time (on Windows also Efficiency mode, low memory priority and
+part of the processor kept free; on Linux part of the processor kept free; on macOS the background
+state, which is already the deep one). Spry itself also looks less often: every four seconds while
+its window is open, every eight on a calm machine. The app in front, the apps you set to "never
+slow" and the built-in "never touched" list stay exempt. "Lend idle time" is kept for when you
+switch to Performance.
+
+What Saver mode saves is processor work, and with it heat and fan noise. It is not a wattage cap,
+and battery life has not been measured. It does not shrink the memory of other apps: on macOS and
+Linux the system decides about memory; on Windows held apps get a low memory priority.
+
+**Measured**, Spry 0.5.0 on a MacBook Pro 2019 (Intel i5-8257U, 8 threads, macOS 15.7), 19 Nov 2026.
+Four busy processes in the background that belong to no app, the app in front resting, 30 seconds
+per state after 16 seconds to settle. The processor time is what the system accounted to the four.
+
+| State | Processor time the four busy processes got | Whole computer |
+|---|---|---|
+| Off | 94% of a core each | 72% busy |
+| On, Performance | 94% of a core each (lent) | 73% busy |
+| On, Saver | 29% of a core each (held) | 39% busy |
+| Off again | 93% of a core each | 72% busy |
+
+In Saver mode the busy background apps got 70% less processor time and the computer was at 39%
+instead of 72%. They also get that much less done. Performance mode, with the app in front resting,
+is the same as off, as it is meant to be. One computer, one run per state: measure yours under
+**Measure**, where the fourth chart shows the same thing. Other systems hold differently (see the
+table under [How it works](#how-it-works)), so the saving there will differ.
+
+Pausing a process did not give memory back on that Mac: a paused process that held 600 MB still
+held 604 MB a minute later (43% of memory was free). That is why Saver mode does not pause apps by
+itself; "Freeze in background" stays a rule you set per app.
 
 ## What it cannot do
 
@@ -303,6 +336,8 @@ the computer is calm) it measures all running apps.
 - An app you just left keeps full speed for 10 seconds.
 - A background app that uses more than 10% of one processor core is **eased**: it only gets the
   processor when the app in front does not need it.
+- In Saver mode easing is always the deeper kind and nothing is lent (see
+  [Saver and Performance](#saver-and-performance)). The next two points describe Performance mode.
 - When the whole processor is above 80% for 4 seconds, easing goes deeper. On Windows and Linux,
   eased apps then stay off part of the processor (about a quarter of the threads, in whole cores,
   never more than half), so the app in front always finds a free one. Strong mode (off until you

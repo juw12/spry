@@ -36,7 +36,10 @@ pub struct Capture {
 impl Capture {
     pub fn load(folder: PathBuf) -> Self {
         let file = folder.join("cpu-off-reference.json");
-        let last = std::fs::read(&file).ok().and_then(|bytes| serde_json::from_slice::<Record>(&bytes).ok()).filter(Record::complete);
+        let last = std::fs::read(&file)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<Record>(&bytes).ok())
+            .filter(Record::complete);
         Self { file, since: None, points: Vec::new(), last, message: "" }
     }
 
@@ -63,7 +66,10 @@ impl Capture {
     pub fn advance(&mut self, now: Instant, cpu: Option<f32>) {
         let Some(start) = self.since else { return };
         let elapsed = now.saturating_duration_since(start);
-        if elapsed >= SETTLE && elapsed <= END && let Some(value) = cpu {
+        if elapsed >= SETTLE
+            && elapsed <= END
+            && let Some(value) = cpu
+        {
             self.points.push((elapsed.as_millis() as u64, value));
         }
         if elapsed < END {
