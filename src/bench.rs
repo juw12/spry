@@ -131,10 +131,13 @@ fn measure(n: u64, secs: f64) -> Phase {
 }
 
 /// A count of steps that a busy process and the measuring process share: a small file that
-/// both map into memory. Noting a step is one store into memory, with no call into the system,
-/// so a process that counts is the same load as one that only computes. (Writing the count to
-/// a file was not: against such processes the app in front on Windows got about half of a quiet
-/// machine's speed with Spry off, not the 72% it gets against processes that only compute.)
+/// both map into memory. Noting a step is one store into memory, with no call into the system.
+/// Even so, a process that counts is not quite the load of one that only computes: with Spry
+/// off, the app in front on some Windows test machines got 8% more against counting processes
+/// and now and then a third less. (Writing the count to a file was worse: about half of a
+/// quiet machine's speed, not the 72% it gets against processes that only compute.) So the app
+/// in front is measured against processes that only compute, and the counting ones are a
+/// second set, used only for what the hold costs the held apps.
 struct Count {
     cell: *const AtomicU64,
     _map: MmapMut,
@@ -176,14 +179,47 @@ pub fn burn(secs: u64, note: Option<&Path>) {
     }
 }
 
-/// The busy background processes, the folder with their step counts, and the counts themselves.
+/// The busy background processes and, for a set that counts, the folder with the step counts
+/// and the counts themselves.
 struct Burners {
     kids: Vec<Child>,
-    notes: PathBuf,
+    notes: Option<PathBuf>,
     counts: Vec<Count>,
 }
 
 impl Burners {
+    /// Starts the busy processes and gives them a moment to get going. A `counting` set also
+    /// notes its steps where this process can read them.
+    fn start(exe: &Path, burners: usize, counting: bool) -> std::io::Result<Self> {
+        let notes = counting.then(|| std::env::temp_dir().join(format!("spry-bench-{}", std::process::id())));
+        if let Some(notes) = &notes {
+            std::fs::create_dir_all(notes)?;
+        }
+        let mut set = Burners { kids: Vec::new(), notes, counts: Vec::new() };
+        for i in 0..burners {
+            let mut burner = std::process::Command::new(exe);
+            let burner = platform::at_normal_priority(&mut burner).args(["burn", "180"]);
+            if let Some(notes) = &set.notes {
+                let note = notes.join(i.to_string());
+                set.counts.push(Count::open(&note, true)?);
+                burner.arg(note);
+            }
+            let child = burner.stdin(Stdio::null()).stdout(Stdio::null()).spawn()?;
+            set.kids.push(child);
+        }
+        sleep(Duration::from_millis(700));
+        Ok(set)
+    }
+
+    fn pids(&self) -> Vec<u32> {
+        self.kids.iter().map(|child| child.id()).collect()
+    }
+
+    /// Each process with what it looked like before anything was held.
+    fn saved(&self) -> Vec<(u32, Saved)> {
+        self.pids().iter().filter_map(|pid| platform::save(*pid).ok().map(|saved| (*pid, saved))).collect()
+    }
+
     /// Steps done so far by all of them.
     fn steps(&self) -> u64 {
         self.counts.iter().map(|count| count.cell().load(Ordering::Relaxed)).sum()
@@ -207,7 +243,23 @@ impl Drop for Burners {
         }
         // Windows removes a file only once nothing maps it any more.
         self.counts.clear();
-        let _ = std::fs::remove_dir_all(&self.notes);
+        if let Some(notes) = &self.notes {
+            let _ = std::fs::remove_dir_all(notes);
+        }
+    }
+}
+
+/// Holds the processes this way and gives the system a moment to act on it.
+fn hold(saved: &[(u32, Saved)], how: Hold) {
+    for (pid, s) in saved {
+        let _ = platform::hold(*pid, s, how);
+    }
+    sleep(Duration::from_millis(300));
+}
+
+fn let_go(saved: &[(u32, Saved)]) {
+    for (pid, s) in saved {
+        let _ = platform::restore(*pid, s);
     }
 }
 
@@ -218,51 +270,45 @@ pub fn run(secs: f64, burners: usize) -> std::io::Result<Report> {
     let n = calibrate();
     let quiet = measure(n, secs);
 
-    let notes = std::env::temp_dir().join(format!("spry-bench-{}", std::process::id()));
-    std::fs::create_dir_all(&notes)?;
-    let mut kids = Burners { kids: Vec::new(), notes, counts: Vec::new() };
-    for i in 0..burners {
-        let note = kids.notes.join(i.to_string());
-        kids.counts.push(Count::open(&note, true)?);
-        let mut burner = std::process::Command::new(&exe);
-        let burner = platform::at_normal_priority(&mut burner).args(["burn", "180"]).arg(note);
-        let child = burner.stdin(Stdio::null()).stdout(Stdio::null()).spawn()?;
-        kids.kids.push(child);
-    }
-    sleep(Duration::from_millis(700));
-    let (busy, front_works_off) = kids.speed_during(|| measure(n, secs));
-
-    let pids: Vec<u32> = kids.kids.iter().map(|c| c.id()).collect();
-    let saved: Vec<(u32, Saved)> = pids.iter().filter_map(|p| platform::save(*p).ok().map(|s| (*p, s))).collect();
-    let hold = |how: Hold| {
-        for (pid, s) in &saved {
-            let _ = platform::hold(*pid, s, how);
-        }
-        sleep(Duration::from_millis(300));
-    };
-    hold(Hold::Deep);
-    let (eased, front_works_held) = kids.speed_during(|| measure(n, secs));
-
-    let pulsed = if cfg!(unix) {
-        let pulse = Pulse::new();
-        pulse.set(pids.clone());
-        sleep(Duration::from_millis(300));
-        let phase = measure(n, secs);
-        drop(pulse);
-        Some(phase)
-    } else {
-        None
+    // First the app in front, against busy processes that only compute: the load every
+    // version has measured, so the gain can be compared from version to version.
+    let (busy, eased, pulsed) = {
+        let kids = Burners::start(&exe, burners, false)?;
+        let busy = measure(n, secs);
+        let saved = kids.saved();
+        hold(&saved, Hold::Deep);
+        let eased = measure(n, secs);
+        let pulsed = if cfg!(unix) {
+            let pulse = Pulse::new();
+            pulse.set(kids.pids());
+            sleep(Duration::from_millis(300));
+            let phase = measure(n, secs);
+            drop(pulse);
+            Some(phase)
+        } else {
+            None
+        };
+        let_go(&saved);
+        (busy, eased, pulsed)
     };
 
-    // The other side of the trade: the app in front rests now, and the held apps are timed.
-    // The ways of holding take turns, five rounds, and each is compared with "left alone" in
-    // the same round. The middle round counts, so a machine whose speed drifts or stumbles
-    // once (shared test machines do both) cannot favour one of them.
+    // Then the other side of the trade, what the hold costs the held apps, with a second set
+    // of busy processes that count their steps. First while the app in front works.
+    let kids = Burners::start(&exe, burners, true)?;
+    let pids = kids.pids();
+    let saved = kids.saved();
+    let front_works_off = kids.speed_during(|| measure(n, secs / 2.0)).1;
+    hold(&saved, Hold::Deep);
+    let front_works_held = kids.speed_during(|| measure(n, secs / 2.0)).1;
+
+    // Now the app in front rests. The ways of holding take turns, five rounds, and each is
+    // compared with "left alone" in the same round. The middle round counts, so a machine
+    // whose speed drifts or stumbles once (shared test machines do both) cannot favour one.
     const ROUNDS: usize = 5;
     let rest = || sleep(Duration::from_secs_f64(secs / 5.0));
     let (mut held, mut pulsed_rest, mut lent, mut off) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     for _ in 0..ROUNDS {
-        hold(Hold::Deep);
+        hold(&saved, Hold::Deep);
         held.push(kids.speed_during(rest).1);
         if cfg!(unix) {
             let pulse = Pulse::new();
@@ -270,11 +316,9 @@ pub fn run(secs: f64, burners: usize) -> std::io::Result<Report> {
             sleep(Duration::from_millis(300));
             pulsed_rest.push(kids.speed_during(rest).1);
         }
-        hold(Hold::Lent);
+        hold(&saved, Hold::Lent);
         lent.push(kids.speed_during(rest).1);
-        for (pid, s) in &saved {
-            let _ = platform::restore(*pid, s);
-        }
+        let_go(&saved);
         sleep(Duration::from_millis(300));
         off.push(kids.speed_during(rest).1);
     }
