@@ -1,0 +1,23 @@
+{
+  "os": "windows",
+  "cores": 4,
+  "burners": 8,
+  "secs": 4.0,
+  "quiet": {
+    "work": 249.20268873220806,
+    "p50_ms": 4.1444,
+    "p95_ms": 4.6137
+  },
+  "busy": {
+    "work": 180.4797501720307,
+    "p50_ms": 17.3196,
+    "p95_ms": 20.0375
+  },
+  "eased": {
+    "work": 229.07857559840042,
+    "p50_ms": 4.6603,
+    "p95_ms": 4.928100000000001
+  },
+  "pulsed": null,
+  "ease_text": "lower priority; under pressure also Efficiency mode and low memory priority"
+}

@@ -23,18 +23,18 @@ machine has cores, then measures how much work the app in front gets done.
 <!-- bench:start -->
 | System | Cores | Quiet | Busy, Spry off | Busy, Spry on | Gain (lowest-highest) | Of quiet speed | Easing only | With pulses | Slowest 5% of steps, off -> on |
 |---|---|---|---|---|---|---|---|---|---|
-| Windows, x64 | 4 | 250 | 180 | 228 | **1.26x** (1.25-1.27) | 91% | 1.26x | not used | 20.6 -> 5.0 ms |
-| macOS 15, Apple silicon | 3 | 220 | 101 | 245 | **2.36x** (2.13-2.46) | 103% | 2.23x | 2.36x | 67.4 -> 73.5 ms |
-| macOS 15, Intel | 4 | 256 | 119 | 249 | **2.14x** (2.04-2.96) | 100% | 2.10x | 2.14x | 126.3 -> 109.8 ms |
-| Linux (Ubuntu), x64 | 4 | 252 | 89 | 218 | **2.45x** (2.23-2.88) | 87% | 1.09x | 2.45x | 15.0 -> 15.1 ms |
+| Windows, x64 | 4 | 250 | 182 | 230 | **1.27x** (1.25-1.29) | 92% | 1.27x | not used | 20.0 -> 4.9 ms |
+| macOS 15, Apple silicon | 3 | 240 | 101 | 246 | **2.36x** (2.13-2.95) | 103% | 2.21x | 2.36x | 68.3 -> 73.5 ms |
+| macOS 15, Intel | 4 | 250 | 119 | 243 | **2.14x** (1.90-2.96) | 100% | 2.10x | 2.14x | 126.3 -> 109.0 ms |
+| Linux (Ubuntu), x64 | 4 | 252 | 89 | 218 | **2.28x** (1.83-2.88) | 87% | 1.09x | 2.28x | 14.7 -> 12.5 ms |
 
-Median of 3 CI runs ([44464015119](https://github.com/juw12/spry/actions/runs/44464015119), [44464540756](https://github.com/juw12/spry/actions/runs/44464540756), [44465145704](https://github.com/juw12/spry/actions/runs/44465145704)). Work is in steps per second.
+Median of 7 CI runs ([44464015119](https://github.com/juw12/spry/actions/runs/44464015119), [44464540756](https://github.com/juw12/spry/actions/runs/44464540756), [44465145704](https://github.com/juw12/spry/actions/runs/44465145704), [44465559716](https://github.com/juw12/spry/actions/runs/44465559716), [44466630805](https://github.com/juw12/spry/actions/runs/44466630805), [44466748192](https://github.com/juw12/spry/actions/runs/44466748192), [44467659332](https://github.com/juw12/spry/actions/runs/44467659332)). Work is in steps per second.
 <!-- bench:end -->
 
-**The weak results, said plainly:** on the Windows test machine the gain is small (1.26x), because
+**The weak results, said plainly:** on the Windows test machine the gain is small (about a quarter), because
 Windows already gave the app in front most of what it needed there; what improved is the reaction
 time (the last column). On Linux, easing alone does almost nothing for the processor; the gain comes
-from pulses. On the two macOS test machines the reaction time did not improve; the amount of work did.
+from pulses. On the two macOS test machines the reaction time did not clearly improve; the amount of work did.
 
 - **Quiet** = nothing else running. **Busy, Spry off** = background processes take what they want.
   **Busy, Spry on** = the same load, held back by Spry (the better of "easing only" and "with pulses").
@@ -45,8 +45,18 @@ from pulses. On the two macOS test machines the reaction time did not improve; t
   highest gain are shown. Your computer will differ, so measure it: press **Measure now** on the page
   (20 seconds), or run `spry bench`.
 
-Spry itself uses about 8 MB of memory and 0.1-0.3% of the processor (measured on Windows with
-370 processes running: 7.7 MB, 2.2% of one of 8 cores).
+**What Spry itself costs.** Measured half a minute after a fresh install on the same test machines
+([install check, run 44468386344](https://github.com/juw12/spry/actions/runs/44468386344)):
+
+| System | Memory | Processor once settled | Processor time in the first 35-45 s, start included |
+|---|---|---|---|
+| Windows | 12.5 MB | 0.3% of one core | 0.22 s |
+| macOS, Apple silicon | 28.5 MB | 1.0% of one core | 0.70 s |
+| macOS, Intel | 21.2 MB | 1.0% of one core | 0.97 s |
+| Linux | 1.3 MB | 0.1% of one core | under 0.01 s |
+
+On a busy machine it looks more often: on the author's Windows PC (8 cores, 370 processes, 75% busy)
+it used 7.7 MB and about 2% of one core.
 
 ## What it cannot do
 
