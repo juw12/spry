@@ -22,12 +22,12 @@ machine has cores, then measures how much work the app in front gets done.
 <!-- bench:start -->
 | System | Cores | Quiet | Busy, Spry off | Busy, Spry on | Gain (lowest-highest) | Of quiet speed | Easing only | With pulses | Slowest 5% of steps, off -> on |
 |---|---|---|---|---|---|---|---|---|---|
-| Windows, x64 | 4 | 252 | 182 | 228 | **1.25x** (1.25-1.25) | 91% | 1.25x | not used | 20.6 -> 5.0 ms |
-| macOS 15, Apple silicon | 3 | 247 | 100 | 245 | **2.46x** (2.46-2.46) | 99% | 2.46x | 2.37x | 124.6 -> 127.0 ms |
-| macOS 15, Intel | 4 | 207 | 78 | 230 | **2.96x** (2.96-2.96) | 111% | 2.10x | 2.96x | 62.5 -> 55.3 ms |
-| Linux (Ubuntu), x64 | 4 | 251 | 89 | 218 | **2.45x** (2.45-2.45) | 87% | 0.93x | 2.45x | 15.0 -> 11.8 ms |
+| Windows, x64 | 4 | 250 | 180 | 228 | **1.26x** (1.25-1.27) | 91% | 1.26x | not used | 20.6 -> 5.0 ms |
+| macOS 15, Apple silicon | 3 | 220 | 101 | 245 | **2.36x** (2.13-2.46) | 112% | 2.23x | 2.36x | 67.4 -> 73.5 ms |
+| macOS 15, Intel | 4 | 256 | 119 | 249 | **2.14x** (2.04-2.96) | 97% | 2.10x | 2.14x | 126.3 -> 109.8 ms |
+| Linux (Ubuntu), x64 | 4 | 252 | 89 | 218 | **2.45x** (2.23-2.88) | 87% | 1.09x | 2.45x | 15.0 -> 15.1 ms |
 
-Median of 1 CI run ([44464015119](https://github.com/juw12/spry/actions/runs/44464015119)). Work is in steps per second.
+Median of 3 CI runs ([44464015119](https://github.com/juw12/spry/actions/runs/44464015119), [44464540756](https://github.com/juw12/spry/actions/runs/44464540756), [44465145704](https://github.com/juw12/spry/actions/runs/44465145704)). Work is in steps per second.
 <!-- bench:end -->
 
 - **Quiet** = nothing else running. **Busy, Spry off** = background processes take what they want.
