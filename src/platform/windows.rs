@@ -1,7 +1,7 @@
 //! Windows: priority class, power throttling (Efficiency mode), memory priority,
 //! working-set trim, and process suspend/resume.
 
-use super::Saved;
+use super::{Hold, Saved};
 use std::collections::BTreeMap;
 use std::ffi::c_void;
 use std::io;
@@ -23,7 +23,8 @@ use windows_sys::core::BOOL;
 pub const EASE_TEXT: &str =
     "lower priority; under pressure also Efficiency mode, low memory priority and part of the processor kept free";
 /// The same for Saver mode, where the deeper hold is used all the time.
-pub const SAVER_TEXT: &str = "lower priority, Efficiency mode, low memory priority and part of the processor kept free";
+pub const SAVER_TEXT: &str =
+    "lower priority, Efficiency mode, low memory priority, and about a quarter of the processor threads to run on";
 pub const CAN_TRIM: bool = true;
 
 #[link(name = "ntdll")]
@@ -150,13 +151,22 @@ const THROTTLE_CONTROLLED: i64 = 1 << 9;
 const THROTTLE_ON: i64 = 1 << 10;
 const CPUS_NOT_CHOSEN: i64 = 1 << 11;
 
-/// The processor threads (as CPU set ids) eased apps may use under pressure, and how many
-/// are kept free for the app in front. Chosen once, among the threads Spry itself may use,
-/// strongest cores first. Nothing is kept free on one thread, or on machines with more than 64.
-fn background_cpus() -> &'static (Vec<u32>, usize) {
-    static CPUS: std::sync::OnceLock<(Vec<u32>, usize)> = std::sync::OnceLock::new();
+/// Where held apps may run, as CPU set ids, sorted.
+struct BackgroundCpus {
+    /// Under pressure: every thread but the ones kept free for the app in front.
+    rest: Vec<u32>,
+    /// How many are kept free.
+    kept: usize,
+    /// In Saver mode: about a quarter of the threads (`super::few`).
+    few: Vec<u32>,
+}
+
+/// Chosen once, among the threads Spry itself may use, strongest cores first. Nothing is
+/// kept free on one thread, or on machines with more than 64.
+fn background_cpus() -> &'static BackgroundCpus {
+    static CPUS: std::sync::OnceLock<BackgroundCpus> = std::sync::OnceLock::new();
     CPUS.get_or_init(|| {
-        let none = (Vec::new(), 0);
+        let none = BackgroundCpus { rest: Vec::new(), kept: 0, few: Vec::new() };
         let mut bytes = 0u32;
         unsafe { GetSystemCpuSetInformation(std::ptr::null_mut(), 0, &mut bytes, std::ptr::null_mut(), 0) };
         let count = bytes as usize / std::mem::size_of::<CpuSet>();
@@ -178,13 +188,25 @@ fn background_cpus() -> &'static (Vec<u32>, usize) {
         }
         let cores: Vec<Vec<u32>> = cores.into_values().collect();
         let free = super::keep_free(&cores);
-        let rest: Vec<u32> = usable.iter().map(|c| c.id).filter(|id| !free.contains(id)).collect();
-        if free.is_empty() || rest.is_empty() { none } else { (rest, free.len()) }
+        let mut rest: Vec<u32> = usable.iter().map(|c| c.id).filter(|id| !free.contains(id)).collect();
+        let mut few = super::few(&cores);
+        rest.sort_unstable();
+        few.sort_unstable();
+        if free.is_empty() || rest.is_empty() || few.is_empty() {
+            none
+        } else {
+            BackgroundCpus { rest, kept: free.len(), few }
+        }
     })
 }
 
 pub fn kept_free_count() -> usize {
-    background_cpus().1
+    background_cpus().kept
+}
+
+/// How many processor threads held apps keep to in Saver mode. 0 = no such lever here.
+pub fn few_count() -> usize {
+    background_cpus().few.len()
 }
 
 /// The processor threads this process may use.
@@ -210,12 +232,17 @@ pub fn squeeze(threads: usize) -> bool {
     unsafe { SetProcessAffinityMask(GetCurrentProcess(), keep) != 0 }
 }
 
-/// The CPU sets a process has chosen for itself (or Spry for it); empty = none, the normal state.
+/// The CPU sets a process has chosen for itself (or Spry for it), sorted; empty = none, the
+/// normal state.
 fn chosen_cpus(handle: &Handle) -> Option<Vec<u32>> {
     let mut ids = [0u32; 128];
     let mut count = 0u32;
     let ok = unsafe { GetProcessDefaultCpuSets(handle.0, ids.as_mut_ptr(), ids.len() as u32, &mut count) };
-    (ok != 0).then(|| ids[..count as usize].to_vec())
+    (ok != 0).then(|| {
+        let mut chosen = ids[..count as usize].to_vec();
+        chosen.sort_unstable();
+        chosen
+    })
 }
 
 /// How many processor threads the process may use right now.
@@ -225,18 +252,27 @@ pub fn cpus_open(pid: u32) -> Option<u32> {
     Some(if chosen.is_empty() { usable_threads() as u32 } else { chosen.len() as u32 })
 }
 
-/// While `deep`, the process keeps off the threads that are kept free. Only for processes
-/// that had no choice of their own, and only undone while it is still exactly what Spry set.
-fn set_cpus(handle: &Handle, saved: &Saved, deep: bool) {
-    let (rest, kept) = background_cpus();
-    if *kept == 0 || saved.b & CPUS_NOT_CHOSEN == 0 {
+/// Under pressure the process keeps off the threads that are kept free; in Saver mode it
+/// keeps to a few. Only for processes that had no choice of their own, and only changed or
+/// undone while it is still exactly what Spry set.
+fn set_cpus(handle: &Handle, saved: &Saved, how: Hold) {
+    let cpus = background_cpus();
+    if cpus.kept == 0 || saved.b & CPUS_NOT_CHOSEN == 0 {
         return;
     }
     let Some(now) = chosen_cpus(handle) else { return };
-    if deep && now.is_empty() {
-        unsafe { SetProcessDefaultCpuSets(handle.0, rest.as_ptr(), rest.len() as u32) };
-    } else if !deep && now == *rest {
-        unsafe { SetProcessDefaultCpuSets(handle.0, std::ptr::null(), 0) };
+    let ours = now == cpus.rest || now == cpus.few;
+    let want: &[u32] = match how {
+        Hold::Deep => &cpus.rest,
+        Hold::Saver => &cpus.few,
+        Hold::Eased | Hold::Lent => &[],
+    };
+    if want.is_empty() {
+        if ours {
+            unsafe { SetProcessDefaultCpuSets(handle.0, std::ptr::null(), 0) };
+        }
+    } else if (now.is_empty() || ours) && now != want {
+        unsafe { SetProcessDefaultCpuSets(handle.0, want.as_ptr(), want.len() as u32) };
     }
 }
 
@@ -290,8 +326,10 @@ fn set_throttle(handle: &Handle, controlled: bool, on: bool) {
     unsafe { SetProcessInformation(handle.0, ProcessPowerThrottling, &state as *const _ as *const c_void, size) };
 }
 
-/// Efficiency mode, memory priority and processor threads: held back while `deep`, otherwise as found.
-fn set_extras(handle: &Handle, saved: &Saved, deep: bool) {
+/// Efficiency mode, memory priority and processor threads: held back under pressure and in
+/// Saver mode, otherwise as found.
+fn set_extras(handle: &Handle, saved: &Saved, how: Hold) {
+    let deep = matches!(how, Hold::Deep | Hold::Saver);
     if deep {
         set_throttle(handle, true, true);
     } else {
@@ -303,12 +341,13 @@ fn set_extras(handle: &Handle, saved: &Saved, deep: bool) {
         let mem = MemoryPriority { value };
         unsafe { SetProcessInformation(handle.0, ProcessMemoryPriority, &mem as *const _ as *const c_void, 4) };
     }
-    set_cpus(handle, saved, deep);
+    set_cpus(handle, saved, how);
 }
 
-/// Hold a process back. `deep` is used while the whole machine is under pressure.
+/// Hold a process back: `Eased`, `Deep` while the whole machine is under pressure, or `Saver`.
 /// A process is only ever lowered, never raised above what it had.
-pub fn apply(pid: u32, saved: &Saved, deep: bool) -> io::Result<()> {
+pub fn apply(pid: u32, saved: &Saved, how: Hold) -> io::Result<()> {
+    let deep = matches!(how, Hold::Deep | Hold::Saver);
     let handle =
         open(pid, PROCESS_SET_INFORMATION | PROCESS_SET_LIMITED_INFORMATION | PROCESS_QUERY_LIMITED_INFORMATION)?;
     let current = unsafe { GetPriorityClass(handle.0) };
@@ -325,7 +364,7 @@ pub fn apply(pid: u32, saved: &Saved, deep: bool) -> io::Result<()> {
         }
         ours.insert(pid, class);
     }
-    set_extras(&handle, saved, deep);
+    set_extras(&handle, saved, how);
     Ok(())
 }
 
@@ -338,7 +377,7 @@ pub fn apply(pid: u32, saved: &Saved, deep: bool) -> io::Result<()> {
 pub fn lend(pid: u32, saved: &Saved) -> io::Result<()> {
     let handle =
         open(pid, PROCESS_SET_INFORMATION | PROCESS_SET_LIMITED_INFORMATION | PROCESS_QUERY_LIMITED_INFORMATION)?;
-    set_extras(&handle, saved, false);
+    set_extras(&handle, saved, Hold::Lent);
     let current = unsafe { GetPriorityClass(handle.0) };
     let mut ours = OURS.lock().unwrap();
     if let Some(set) = ours.get(&pid).copied() {
@@ -357,7 +396,7 @@ pub fn lend(pid: u32, saved: &Saved) -> io::Result<()> {
 pub fn restore(pid: u32, saved: &Saved) -> io::Result<()> {
     let handle =
         open(pid, PROCESS_SET_INFORMATION | PROCESS_SET_LIMITED_INFORMATION | PROCESS_QUERY_LIMITED_INFORMATION)?;
-    set_extras(&handle, saved, false);
+    set_extras(&handle, saved, Hold::Lent);
     let current = unsafe { GetPriorityClass(handle.0) };
     let put_back = match OURS.lock().unwrap().remove(&pid) {
         Some(set) => set != 0 && set == current,

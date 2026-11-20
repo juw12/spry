@@ -3,9 +3,10 @@
 //! macOS: the "background" state (the same switch `taskpolicy -b` uses): lowest CPU priority
 //! and throttled disk access. Linux: idle disk priority. A normal user can lower a nice value
 //! but not raise it again, so nice is not used. Under pressure eased apps keep off part of the
-//! processor (which a normal user can undo), and pause-and-resume pulses do the rest.
+//! processor (which a normal user can undo), in Saver mode they keep to about a quarter of it,
+//! and pause-and-resume pulses do the rest.
 
-use super::Saved;
+use super::{Hold, Saved};
 use std::io;
 
 #[cfg(target_os = "macos")]
@@ -17,7 +18,7 @@ pub const EASE_TEXT: &str =
 #[cfg(target_os = "macos")]
 pub const SAVER_TEXT: &str = EASE_TEXT;
 #[cfg(not(target_os = "macos"))]
-pub const SAVER_TEXT: &str = "idle disk priority, and part of the processor is kept free";
+pub const SAVER_TEXT: &str = "idle disk priority, and about a quarter of the processor threads to run on";
 pub const CAN_TRIM: bool = false;
 
 pub fn attach_console() {}
@@ -106,7 +107,7 @@ mod os {
         }
     }
 
-    pub fn apply(pid: u32, _saved: &Saved, _deep: bool) -> io::Result<()> {
+    pub fn apply(pid: u32, _saved: &Saved, _how: Hold) -> io::Result<()> {
         set(pid, PRIO_DARWIN_BG)
     }
 
@@ -124,6 +125,10 @@ mod os {
 
     /// macOS gives no way to keep another app off a processor core.
     pub fn kept_free_count() -> usize {
+        0
+    }
+
+    pub fn few_count() -> usize {
         0
     }
 
@@ -270,12 +275,13 @@ mod os {
         mask
     }
 
-    /// The processor threads eased apps keep off under pressure, as bits. 0 = not used here.
+    /// The processor threads eased apps keep off under pressure, and the few they keep to in
+    /// Saver mode (`platform::few`), as bits. (0, 0) = not used here.
     /// Chosen once, among the threads Spry itself may use, strongest cores first.
-    fn kept_free() -> u64 {
-        static FREE: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
-        *FREE.get_or_init(|| {
-            let Some(usable) = cpus_get(0) else { return 0 };
+    fn background_cpus() -> (u64, u64) {
+        static CPUS: std::sync::OnceLock<(u64, u64)> = std::sync::OnceLock::new();
+        *CPUS.get_or_init(|| {
+            let Some(usable) = cpus_get(0) else { return (0, 0) };
             let mut cores: Vec<(u32, Vec<u32>)> = Vec::new();
             let mut seen = 0u64;
             for cpu in (0..64u32).filter(|c| usable & (1 << c) != 0) {
@@ -292,12 +298,18 @@ mod os {
             }
             cores.sort_by_key(|(strength, _)| std::cmp::Reverse(*strength));
             let cores: Vec<Vec<u32>> = cores.into_iter().map(|(_, threads)| threads).collect();
-            crate::platform::keep_free(&cores).iter().fold(0, |mask, c| mask | (1 << c))
+            let bits = |threads: Vec<u32>| threads.iter().fold(0u64, |mask, c| mask | (1 << c));
+            (bits(crate::platform::keep_free(&cores)), bits(crate::platform::few(&cores)))
         })
     }
 
     pub fn kept_free_count() -> usize {
-        kept_free().count_ones() as usize
+        background_cpus().0.count_ones() as usize
+    }
+
+    /// How many processor threads held apps keep to in Saver mode. 0 = no such lever here.
+    pub fn few_count() -> usize {
+        background_cpus().1.count_ones() as usize
     }
 
     /// Limits this program, and what it starts from now on, to its first `threads` processor threads.
@@ -336,19 +348,39 @@ mod os {
         Ok(Saved { a, b: cpus_get(pid).unwrap_or(0) as i64 })
     }
 
-    /// Disk priority goes to idle. While `deep` (the machine is under pressure) the process
-    /// also keeps off the processor threads that are kept free for the app in front.
-    pub fn apply(pid: u32, _saved: &Saved, deep: bool) -> io::Result<()> {
-        let free = kept_free();
+    /// What Spry narrows a thread to that may use `wide`. `wide` itself or 0 = left as it is.
+    /// Saver mode keeps a thread to the few; one that may use none of them is held as under pressure.
+    fn narrowed(wide: u64, how: Hold) -> u64 {
+        let (free, few) = background_cpus();
+        match how {
+            Hold::Saver if wide & few != 0 => wide & few,
+            Hold::Saver | Hold::Deep => wide & !free,
+            Hold::Eased | Hold::Lent => wide,
+        }
+    }
+
+    /// Disk priority goes to idle. Under pressure (`Deep`) the process also keeps off the
+    /// processor threads that are kept free for the app in front, and in Saver mode it keeps
+    /// to a few of them.
+    pub fn apply(pid: u32, saved: &Saved, how: Hold) -> io::Result<()> {
+        let main_wide = saved.b as u64;
         let mut before = BEFORE.lock().unwrap();
         let known = before.entry(pid).or_default();
+        // A thread that started while the process was narrowed took the narrow set over.
+        let was_narrowed = known.iter().any(|w| w.cpus.is_some());
+        let took_over = |now: u64| {
+            was_narrowed
+                && now != main_wide
+                && [Hold::Deep, Hold::Saver].iter().any(|held| now == narrowed(main_wide, *held))
+        };
         let mut done = 0;
         for tid in threads(pid) {
             let at = match known.iter().position(|w| w.tid == tid) {
                 Some(at) => at,
                 None => {
                     let Some(disk) = ioprio_get(tid) else { continue };
-                    known.push(Was { tid, disk, cpus: None });
+                    let cpus = cpus_get(tid).filter(|now| took_over(*now)).map(|now| (main_wide, now));
+                    known.push(Was { tid, disk, cpus });
                     known.len() - 1
                 }
             };
@@ -356,19 +388,25 @@ mod os {
             if ioprio_set(tid, IOPRIO_IDLE) {
                 done += 1;
             }
-            if deep && free != 0 {
-                if was.cpus.is_none()
-                    && let Some(now) = cpus_get(tid)
-                {
-                    let narrow = now & !free;
-                    if narrow != 0 && narrow != now && cpus_set(tid, narrow) {
-                        was.cpus = Some((now, narrow));
+            match was.cpus {
+                None => {
+                    if let Some(now) = cpus_get(tid) {
+                        let narrow = narrowed(now, how);
+                        if narrow != 0 && narrow != now && cpus_set(tid, narrow) {
+                            was.cpus = Some((now, narrow));
+                        }
                     }
                 }
-            } else if let Some((wide, narrow)) = was.cpus.take() {
-                // Pressure is over. Only undo what is still as Spry left it.
-                if cpus_get(tid) == Some(narrow) {
-                    cpus_set(tid, wide);
+                Some((wide, narrow)) => {
+                    let want = match narrowed(wide, how) {
+                        0 => wide,
+                        want => want,
+                    };
+                    if want != narrow {
+                        // Pressure is over, or the mode changed. Only what is still as Spry left it.
+                        let moved = cpus_get(tid) == Some(narrow) && cpus_set(tid, want);
+                        was.cpus = (moved && want != wide).then_some((wide, want));
+                    }
                 }
             }
         }
@@ -378,14 +416,15 @@ mod os {
     /// The app in front rests. Idle disk priority costs nothing while the disk is free, so
     /// it stays; the processor threads kept free under pressure are given back.
     pub fn lend(pid: u32, saved: &Saved) -> io::Result<()> {
-        apply(pid, saved, false)
+        apply(pid, saved, Hold::Lent)
     }
 
     /// Puts back only what is still as Spry set it: a value the app changed itself in the
     /// meantime is the app's own choice and stays.
     pub fn restore(pid: u32, saved: &Saved) -> io::Result<()> {
         let known = BEFORE.lock().unwrap().remove(&pid).unwrap_or_default();
-        let (free, main_wide) = (kept_free(), saved.b as u64);
+        let main_wide = saved.b as u64;
+        let ours = [narrowed(main_wide, Hold::Deep), narrowed(main_wide, Hold::Saver)];
         let mut done = 0;
         for tid in threads(pid) {
             let was = known.iter().find(|w| w.tid == tid);
@@ -395,16 +434,17 @@ mod os {
                 done += 1;
             }
             let now = cpus_get(tid);
-            match was.and_then(|w| w.cpus) {
-                Some((wide, narrow)) => {
+            match was.map(|w| w.cpus) {
+                Some(Some((wide, narrow))) => {
                     if now == Some(narrow) {
                         cpus_set(tid, wide);
                     }
                 }
+                // Spry saw this thread and did not narrow it: what it has now is its own choice.
+                Some(None) => {}
                 // No note for this thread (started while eased, or Spry was killed and restarted).
                 None => {
-                    let narrow = main_wide & !free;
-                    if narrow != main_wide && narrow != 0 && now == Some(narrow) {
+                    if now.is_some_and(|now| now != main_wide && now != 0 && ours.contains(&now)) {
                         cpus_set(tid, main_wide);
                     }
                 }

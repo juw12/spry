@@ -1992,7 +1992,7 @@ checksum = "3244542535d5de959d90ec55d1b5ff0fd2bb7b1310223907d5f11932847f7b59"
 
 [[package]]
 name = "spry"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "ctrlc",
  "libc",

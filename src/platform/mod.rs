@@ -26,19 +26,21 @@ pub enum Hold {
     /// disk priority, which a normal user could not raise again.)
     Lent,
     Eased,
-    /// The whole machine is under pressure.
+    /// The whole machine is under pressure: also off the threads kept free for the app in front.
     Deep,
+    /// Saver mode: as `Deep`, and on a few processor threads only (see `few`).
+    Saver,
 }
 
 pub fn hold(pid: u32, saved: &Saved, how: Hold) -> std::io::Result<()> {
     match how {
         Hold::Lent => lend(pid, saved),
-        Hold::Eased => apply(pid, saved, false),
-        Hold::Deep => apply(pid, saved, true),
+        _ => apply(pid, saved, how),
     }
 }
 
-/// Which processor threads eased apps keep off while the machine is under pressure, so the
+/// Which processor threads eased apps keep off while the machine is under pressure, and all
+/// the time in Saver mode, so the
 /// app in front always finds a free one. `cores` lists the usable threads by physical core,
 /// best cores first. About a quarter is kept free, in whole cores, and never more than half.
 pub fn keep_free(cores: &[Vec<u32>]) -> Vec<u32> {
@@ -56,6 +58,19 @@ pub fn keep_free(cores: &[Vec<u32>]) -> Vec<u32> {
         free.extend(core.iter().copied().take(room));
     }
     free
+}
+
+/// The processor threads held apps keep to in Saver mode: about a quarter of them, at least
+/// one, from the weakest cores, and never one that is kept free. Two busy apps on four threads
+/// otherwise fill half the processor however they are held. Empty where nothing is kept free.
+pub fn few(cores: &[Vec<u32>]) -> Vec<u32> {
+    let free = keep_free(cores);
+    if free.is_empty() {
+        return Vec::new();
+    }
+    let total: usize = cores.iter().map(Vec::len).sum();
+    let mut rest: Vec<u32> = cores.iter().flatten().copied().filter(|thread| !free.contains(thread)).collect();
+    rest.split_off(rest.len().saturating_sub((total / 4).max(1)))
 }
 
 /// Wayland itself does not tell a program which window is in front, but three compositors
@@ -125,7 +140,7 @@ pub fn open_url(url: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{keep_free, wayland};
+    use super::{few, keep_free, wayland};
     use serde_json::json;
 
     #[test]
@@ -160,5 +175,23 @@ mod tests {
         assert_eq!(keep_free(&singles(4)), [0]);
         assert_eq!(keep_free(&pairs(4)), [0, 1]);
         assert_eq!(keep_free(&pairs(8)), [0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn saver_mode_keeps_held_apps_to_a_quarter_of_the_processor() {
+        let pairs = |n: u32| (0..n).map(|c| vec![2 * c, 2 * c + 1]).collect::<Vec<_>>();
+        let singles = |n: u32| (0..n).map(|c| vec![c]).collect::<Vec<_>>();
+        assert!(few(&singles(1)).is_empty(), "one thread: there is no choice to make");
+        assert_eq!(few(&singles(2)), [1], "two threads: the one that is not kept free");
+        assert_eq!(few(&pairs(1)), [1]);
+        assert_eq!(few(&singles(3)), [2], "at least one thread, also below four");
+        assert_eq!(few(&pairs(2)), [3], "four threads: one, on the weakest core");
+        assert_eq!(few(&singles(4)), [3]);
+        assert_eq!(few(&pairs(4)), [6, 7], "eight threads: two, a whole core");
+        assert_eq!(few(&pairs(8)), [12, 13, 14, 15]);
+        for cores in [singles(2), singles(3), pairs(2), singles(6), pairs(4), pairs(8), pairs(32)] {
+            let (free, some) = (keep_free(&cores), few(&cores));
+            assert!(!some.is_empty() && some.iter().all(|thread| !free.contains(thread)), "never a kept-free thread");
+        }
     }
 }

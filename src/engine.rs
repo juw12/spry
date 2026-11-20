@@ -387,6 +387,7 @@ impl Engine {
             }
             let hold = match level {
                 Level::Lent => Hold::Lent,
+                _ if plan.saver => Hold::Saver,
                 _ if plan.deep => Hold::Deep,
                 _ => Hold::Eased,
             };
