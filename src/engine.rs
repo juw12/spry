@@ -35,7 +35,6 @@ pub struct Shared {
     pub pause_until: Mutex<Option<Instant>>,
     pub token: String,
     pub held: AtomicUsize,
-    pub autostart: AtomicBool,
     /// A newer released version, once the daily look has found one (update.rs).
     pub update: Mutex<Option<String>>,
     /// Why the newer version could not be put in, for the page.
@@ -62,7 +61,6 @@ impl Shared {
             pause_until: Mutex::new(None),
             token: config::token(),
             held: AtomicUsize::new(0),
-            autostart: AtomicBool::new(crate::install::is_installed()),
             update: Mutex::new(None),
             update_error: Mutex::new(None),
             restart: AtomicBool::new(false),
@@ -636,7 +634,8 @@ fn status_json(
         "self_mem": me.map_or(0, |p| p.mem),
         "ease_text": if cfg.mode == config::Mode::Saver { platform::SAVER_TEXT } else { platform::EASE_TEXT },
         "can_trim": platform::CAN_TRIM,
-        "autostart": shared.autostart.load(Ordering::Relaxed),
+        // Read each time: `spry install` in a terminal changes it behind the running Spry.
+        "autostart": crate::install::is_installed(),
         "update": *shared.update.lock().unwrap(),
         "update_error": *shared.update_error.lock().unwrap(),
         "can_update": crate::update::possible(),
