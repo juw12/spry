@@ -15,6 +15,10 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
+/// The page of the newest release: GitHub answers it by pointing at the page of that version.
+const NEWEST_PAGE: &str = "https://github.com/juw12/spry/releases/latest";
+/// The same question to GitHub's API, asked when the page gave no answer. It answers 60 times
+/// an hour per network address, which an office or a test machine shares with many others.
 const NEWEST: &str = "https://api.github.com/repos/juw12/spry/releases/latest";
 const DOWNLOADS: &str = "https://github.com/juw12/spry/releases/download";
 /// The folder next to the program in which a download is checked before anything is replaced.
@@ -70,13 +74,24 @@ fn tool(name: &str) -> std::process::Command {
     }
 }
 
-/// The newest released version, or None when it cannot be found out (no connection, no curl).
-pub fn latest() -> Option<String> {
-    let url = match source() {
-        Source::GitHub => NEWEST.to_string(),
-        Source::Other(from) => format!("{from}/latest.json"),
-        Source::Nowhere => return None,
-    };
+/// The version in the address of a release page: ".../releases/tag/v0.6.2" is "0.6.2".
+fn tagged(address: &str) -> Option<String> {
+    let (_, tag) = address.trim().split_once("/releases/tag/")?;
+    let version = tag.strip_prefix('v')?;
+    numbers(version).map(|_| version.to_string())
+}
+
+/// Where the page of the newest release points, without going there.
+fn pointed() -> Option<String> {
+    let nowhere = if cfg!(windows) { "NUL" } else { "/dev/null" };
+    let mut curl = tool("curl");
+    curl.args(["-fsS", "-m", "15", "-o", nowhere, "-w", "%{redirect_url}", NEWEST_PAGE]);
+    let out = curl.stdin(Stdio::null()).output().ok()?;
+    tagged(&String::from_utf8_lossy(&out.stdout))
+}
+
+/// What a place that lists the newest release as JSON says.
+fn listed(url: &str) -> Option<String> {
     let out = tool("curl").args(["-fsSL", "-m", "15"]).arg(url).stdin(Stdio::null()).output().ok()?;
     if !out.status.success() {
         return None;
@@ -84,6 +99,15 @@ pub fn latest() -> Option<String> {
     let release: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
     let version = release["tag_name"].as_str()?.trim_start_matches('v').to_string();
     numbers(&version).map(|_| version)
+}
+
+/// The newest released version, or None when it cannot be found out (no connection, no curl).
+pub fn latest() -> Option<String> {
+    match source() {
+        Source::GitHub => pointed().or_else(|| listed(NEWEST)),
+        Source::Other(from) => listed(&format!("{from}/latest.json")),
+        Source::Nowhere => None,
+    }
 }
 
 /// The newest version when it is newer than this Spry.
@@ -307,10 +331,9 @@ pub fn relaunch(shared: &Shared, tray: bool) {
     if !shared.restart.load(Ordering::Relaxed) {
         return;
     }
-    // With its window open a moment ago Spry comes back with the window; otherwise quietly.
-    let watched = shared.watched.lock().unwrap().is_some_and(|at| at.elapsed() < Duration::from_secs(10));
+    // With its window open Spry comes back with the window; otherwise quietly.
     let mut next = platform::command(exe());
-    next.args(again(watched && shared.window.load(Ordering::Relaxed), tray));
+    next.args(again(shared.window_open.load(Ordering::Relaxed), tray));
     next.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
     #[cfg(unix)]
     {
@@ -326,6 +349,12 @@ pub fn relaunch(shared: &Shared, tray: bool) {
     let _ = next.spawn();
 }
 
+/// Once a day; in an hour when the last look got no answer, as on a laptop that was started
+/// before it was online.
+fn until_next_look(answered: bool) -> Duration {
+    Duration::from_secs(if answered { 24 * 3600 } else { 3600 })
+}
+
 /// Half a minute after the start and then once a day: is there a newer Spry?
 pub fn watch(shared: Arc<Shared>) {
     if matches!(source(), Source::Nowhere) {
@@ -334,14 +363,15 @@ pub fn watch(shared: Arc<Shared>) {
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_secs(30));
         loop {
-            if let Some(version) = available() {
+            let newest = latest();
+            if let Some(version) = newest.clone().filter(|newest| newer(newest, &current())) {
                 *shared.update.lock().unwrap() = Some(version.clone());
                 let automatic = shared.cfg.lock().unwrap().auto_update;
                 if automatic && possible() && install(&shared, &version).is_ok() {
                     return;
                 }
             }
-            std::thread::sleep(Duration::from_secs(24 * 3600));
+            std::thread::sleep(until_next_look(newest.is_some()));
         }
     });
 }
@@ -362,6 +392,29 @@ mod tests {
         for odd in ["", "latest", "0.7.0-rc1", "+1.0.0", "1..0", "0.7.0/../x", "1.2.3.4.5"] {
             assert!(!newer(odd, "0.6.0"), "{odd:?} must not count as a newer version");
         }
+    }
+
+    #[test]
+    fn the_version_is_read_from_where_the_releases_page_points() {
+        assert_eq!(tagged("https://github.com/juw12/spry/releases/tag/v0.6.2").as_deref(), Some("0.6.2"));
+        assert_eq!(tagged("https://github.com/juw12/spry/releases/tag/v0.10.0\n").as_deref(), Some("0.10.0"));
+        // No release yet, a sign-in page, nothing at all, or a tag that is not a version.
+        for odd in [
+            "",
+            "https://github.com/juw12/spry/releases",
+            "https://github.com/login?return_to=x",
+            "https://github.com/juw12/spry/releases/tag/0.6.2",
+            "https://github.com/juw12/spry/releases/tag/v0.7.0-rc1",
+            "https://github.com/juw12/spry/releases/tag/v0.7.0/../x",
+        ] {
+            assert_eq!(tagged(odd), None, "{odd:?} must not count as a version");
+        }
+    }
+
+    #[test]
+    fn a_look_that_got_no_answer_is_repeated_sooner() {
+        assert_eq!(until_next_look(true), Duration::from_secs(24 * 3600));
+        assert_eq!(until_next_look(false), Duration::from_secs(3600));
     }
 
     #[test]

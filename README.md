@@ -330,7 +330,8 @@ first-start warnings on Windows and macOS remain.
 ## Updates
 
 Spry keeps itself up to date. Half a minute after it starts, and then once a day, it asks GitHub
-which release is the newest. When that one is newer than the Spry that is running, Spry:
+which release is the newest (in an hour again when it got no answer, as on a laptop that was not
+online yet). When that one is newer than the Spry that is running, Spry:
 
 1. downloads the file for your system from the release page into a folder next to itself;
 2. compares it with the SHA-256 checksum published next to it;
@@ -350,9 +351,13 @@ went wrong, with a button to try again.
 
 What you should know about it:
 
-- The daily look is one request to `api.github.com`. Like every request it shows GitHub your
-  internet address. Nothing about you, your computer or your apps is in it, and Spry makes no other
-  connection.
+- The daily look is one request to `github.com`: the address of the newest release's page. Only
+  when that gives no answer Spry asks `api.github.com`, which answers 60 times an hour per network
+  address, shared by everyone behind the same office or provider. Like every request it shows
+  GitHub your internet address. Nothing about you, your computer or your apps is in it, and Spry
+  makes no other connection.
+- Behind a proxy, `curl` uses the one named in the environment variable `HTTPS_PROXY`. Tried on an
+  office PC that reaches GitHub only that way.
 - The checksum shows that the download arrived whole and is the file on the release page. It is
   the same check the install lines make. Spry does not check the build record (see "Check a
   download" above) by itself, so it trusts the release page of this repository.
@@ -367,6 +372,11 @@ What you should know about it:
   was open or had been open a moment before: the check against the real release page found that on
   Windows and macOS within minutes of the release, and 0.6.1 fixes it. If you have 0.6.0, start
   Spry again by hand after it has updated; from 0.6.1 on it comes back by itself.
+- Until 0.6.1 the look went to `api.github.com` only, and a look that got no answer was repeated a
+  day later. On a shared network address that answer can be "too many requests": it happened to
+  the check of 0.6.1 on one of GitHub's Mac test machines. 0.6.1 also brought its window back when
+  anything had asked it for its numbers in the last 10 seconds (`spry status` in a script, for
+  example), not only when the window was open. 0.6.2 changes all three.
 
 ## How it works
 

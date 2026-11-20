@@ -154,6 +154,7 @@ pub fn run(shared: Arc<Shared>, worker: JoinHandle<()>, show: bool) -> ! {
         if shared.quit.load(Ordering::Relaxed) || engine_gone {
             // The window closes with Spry: its standard input ends here.
             if let Some(window) = page.take() {
+                shared.window_open.store(true, Ordering::Relaxed);
                 close_window(window);
             }
             tray = None;
