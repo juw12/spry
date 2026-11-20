@@ -89,6 +89,8 @@ pub struct Plan {
     pub family: HashSet<u32>,
     /// Machine is under CPU pressure: use the deeper form of easing.
     pub deep: bool,
+    /// Saver mode: the deeper form all the time, and on a few processor threads only.
+    pub saver: bool,
 }
 
 /// An app you just left keeps full speed this long.
@@ -242,11 +244,12 @@ pub fn decide(cfg: &Config, snap: &Snapshot, st: &mut PolicyState, now: Instant)
     if !rests {
         st.rest_since = None;
     }
-    // Saver mode is there to use less: nothing is lent, and the deeper hold is used all the time.
+    // Saver mode is there to use less: nothing is lent, the deeper hold is used all the time,
+    // and held apps keep to a few processor threads.
     let saver = cfg.mode == Mode::Saver;
     let lend = !saver && cfg.lend && rests && now.duration_since(*st.rest_since.get_or_insert(now)) >= LEND_AFTER;
 
-    let mut plan = Plan { family, deep: st.pressure || saver, ..Plan::default() };
+    let mut plan = Plan { family, deep: st.pressure || saver, saver, ..Plan::default() };
 
     for p in &snap.procs {
         if !p.mine || p.pid <= 1 || plan.family.contains(&p.pid) || own.contains(&p.pid) {
@@ -377,7 +380,7 @@ mod tests {
         for secs in [0, 1, 5, 10, 20, 600] {
             let plan = decide(&saver, &snap, &mut st, t + Duration::from_secs(secs));
             assert_eq!(plan.levels.get(&31), Some(&Level::Ease), "held after {secs} s of rest: nothing is lent");
-            assert!(plan.deep, "the deeper hold, without waiting for pressure");
+            assert!(plan.deep && plan.saver, "the deeper hold on a few threads, without waiting for pressure");
             assert!(!plan.levels.contains_key(&20) && !plan.levels.contains_key(&21), "never the app in front");
             assert!(!plan.levels.contains_key(&30), "a quiet process is left alone");
         }
@@ -388,7 +391,7 @@ mod tests {
         let performance = performance();
         let mut st = PolicyState::default();
         let first = decide(&performance, &snap, &mut st, t);
-        assert!(!first.deep);
+        assert!(!first.deep && !first.saver);
         assert_eq!(first.levels.get(&31), Some(&Level::Ease));
         // The rest counts from the second look at the same app in front; six seconds later it is lent.
         decide(&performance, &snap, &mut st, t + Duration::from_secs(1));
@@ -491,7 +494,10 @@ mod tests {
         let t0 = Instant::now();
         assert_eq!(decide(&cfg, &snap, &mut st, t0).levels.get(&31), Some(&Level::Ease), "a spike is not pressure");
         let hot = decide(&cfg, &snap, &mut st, t0 + Duration::from_secs(5));
-        assert!(hot.deep);
+        assert!(
+            hot.deep && !hot.saver,
+            "under pressure, Performance mode: the deeper hold, on every thread that is not kept free"
+        );
         assert_eq!(hot.levels.get(&31), Some(&Level::Pulse));
         // The pulsed process now measures lower, and must stay pulsed while pressure lasts.
         snap.procs[4].cpu = 30.0;

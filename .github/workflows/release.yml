@@ -30,6 +30,10 @@ jobs:
             asset: spry-linux-arm64.tar.gz
             target: aarch64-unknown-linux-musl
     runs-on: ${{ matrix.os }}
+    env:
+      # "true" once the repository has an Apple Developer ID (docs/signing.md). Until then the
+      # signing step below is skipped and the downloads are built exactly as before.
+      HAVE_MAC_CERT: ${{ secrets.MACOS_CERT_P12 != '' }}
     steps:
       - uses: actions/checkout@v4
       - name: Rust present (some runners come without it)
@@ -67,6 +71,17 @@ jobs:
           dist/Spry.app/Contents/MacOS/spry version
           codesign --verify --deep --strict dist/Spry.app
           ditto -c -k --keepParent dist/Spry.app ${{ matrix.app }}
+
+      # Not tested yet: no certificate has been bought. See docs/signing.md.
+      - name: Sign with an Apple Developer ID and have Apple check it (only when the secrets exist)
+        if: runner.os == 'macOS' && env.HAVE_MAC_CERT == 'true'
+        env:
+          P12: ${{ secrets.MACOS_CERT_P12 }}
+          P12_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: sh scripts/sign-macos.sh spry dist/Spry.app "${{ matrix.asset }}" "${{ matrix.app }}"
 
       - name: Build (Linux, runs on any distribution)
         if: runner.os == 'Linux'

@@ -8,9 +8,10 @@ holds the busy apps behind it back. It has two modes:
 - **Saver** (the default): busy apps stay held for as long as they are in the background, also while
   you read, think or step away. Where the hold bites, the computer does less work, so it uses less
   processor and stays cooler, and work in the background takes longer. How much is measured under
-  [Saver and Performance](#saver-and-performance): on a real MacBook Pro 2019 the computer went
-  from 72% busy to 39%; on a Windows or Linux machine that still has processor to spare it saved
-  nothing.
+  [Saver and Performance](#saver-and-performance): on Windows and Linux test machines with four
+  processor threads, two busy background apps went from half of the processor to a quarter and got
+  half of their work done; on a real MacBook Pro 2019 the computer went from 72% busy to 39%
+  (measured with 0.5.0); on the two macOS test machines it saved little or nothing.
 - **Performance**: busy background apps are held only while the app in front is working, and get
   the processor back while it rests. The app in front is quicker; the computer does about as much
   work as without Spry.
@@ -49,9 +50,11 @@ machine has threads, then measures how much work the app in front gets done and 
 to a click. On Windows and Linux the test is repeated with only 2 threads allowed, as a stand-in for
 a smaller machine.
 
-These tables measure the time while the app in front is working. Under this load Saver and
-Performance hold the background the same way then, so the numbers are for both modes. The modes
-differ while the app in front rests: Performance lends the processor back (measured under
+These tables measure the time while the app in front is working, with the hold Performance mode
+uses under this load. Saver mode holds at least as much: since 0.6.4 it also keeps the held apps to
+about a quarter of the processor threads on Windows and Linux. What the app in front gains with
+that narrower hold has not been measured separately. The modes differ most while the app in front
+rests: Performance lends the processor back (measured under
 [What it costs the apps that are held](#what-it-costs-the-apps-that-are-held)), Saver keeps
 holding (measured under [Saver and Performance](#saver-and-performance)).
 
@@ -72,7 +75,7 @@ Each row is the median over its CI runs ([44508838506](https://github.com/juw12/
 
 These runs were made with the 0.3.1 code. The gain is measured against the same plain busy
 processes as in every earlier version, and with Strong mode off, which is how Spry now comes on
-every system. The 0.6.3 code was measured again for the Saver table further down; what the same
+every system. The 0.6.4 code was measured again for the Saver table further down; what the same
 test gave the app in front in those runs is shown there, in its last column.
 
 **The weak results, said plainly:**
@@ -139,7 +142,8 @@ kept in `docs/bench/v0.1/`, `docs/bench/v0.2/` and `docs/bench/v0.3.0/`.
   [What it costs the apps that are held](#what-it-costs-the-apps-that-are-held)). If you used an
   earlier version, your saved settings are kept, so Strong mode stays on until you untick it.
 - **Kept free**: how many processor threads background apps stay off while the machine is under
-  pressure (Windows and Linux; macOS gives a normal program no way to do this).
+  pressure (Windows and Linux; macOS gives a normal program no way to do this). In Saver mode they
+  stay off them all the time, and since 0.6.4 they keep to about a quarter of the threads.
 - **Slowest 5% of reactions**: a second thread "clicks" 60 times a second; this is how long the app
   in front takes to answer, for the slowest twentieth of the clicks.
 - These are shared virtual machines and the numbers move between runs, which is why the lowest and
@@ -166,13 +170,15 @@ Holding an app back means it gets less done. Up to 0.2 that was true all the tim
 stayed held while you were reading or away, when nothing needed the processor. Since 0.3.0 the time
 can be lent: in Performance mode, while the app in front rests, the held apps run as if Spry were
 not there. Saver mode, the default since 0.5, keeps them held on purpose: that is where its saving
-comes from, and the price is the "still held" column below.
+comes from. Up to 0.6.3 its price was the "still held" column below. Since 0.6.4 Saver holds
+harder on Windows and Linux, and its price is in the tables under
+[Saver and Performance](#saver-and-performance).
 
 Measured in the same runs as the table above, with a second set of busy background processes that
 count their own work. 100% is what they get done with Spry off.
 
 <!-- bench-cost:start -->
-| System | Front app works: held (lowest-highest) | Front app rests: still held (0.2; Saver mode today) | The same with pulses (0.2 on Linux) | Front app rests: lent (Performance mode, lowest-highest) | Hold back after (slowest) |
+| System | Front app works: held (lowest-highest) | Front app rests: still held (0.2; Saver mode up to 0.6.3) | The same with pulses (0.2 on Linux) | Front app rests: lent (Performance mode, lowest-highest) | Hold back after (slowest) |
 |---|---|---|---|---|---|
 | Windows, x64 | 56% (55-57) | 50% | not offered | **100%** (99-100) | 1.1 s (1.1 s) |
 | macOS 15, Apple silicon | 54% (17-86) | 55% | 30% | **99%** (97-102) | 0.8 s (1.1 s) |
@@ -188,9 +194,10 @@ count their own work. 100% is what they get done with Spry off.
   This part is the price of the gain and has not changed: the processor is finite, and while you
   work the others wait.
 - **Front app rests: still held** is what they got up to 0.2 while the app in front did nothing,
-  and what they get in Saver mode today. **The same with pulses** is what they got on Linux as 0.2
-  came, or anywhere with Strong mode ticked. Up to 0.2 nobody had chosen to lose this time; in
-  Saver mode it is the saving you asked for.
+  and what they got in Saver mode up to 0.6.3 (0.6.4 is measured under
+  [Saver and Performance](#saver-and-performance)). **The same with pulses** is what they got on
+  Linux as 0.2 came, or anywhere with Strong mode ticked. Up to 0.2 nobody had chosen to lose this
+  time; in Saver mode it is the saving you asked for.
 - **Front app rests: lent** is what they get in Performance mode.
 - **Hold back after** is how long after the app in front starts working again the others are held
   again, timed in a test that runs the whole program (median, and the slowest of the five runs).
@@ -233,7 +240,11 @@ mode; since 0.5 a new install starts in Saver mode.
 In **Saver** mode nothing is lent: a busy background app stays held until you switch back to it.
 It is held the deeper way all the time (on Windows also Efficiency mode, low memory priority and
 part of the processor kept free; on Linux part of the processor kept free; on macOS the background
-state, which is already the deep one). Spry itself also looks less often: every four seconds while
+state, which is already the deep one). Since 0.6.4, on Windows and Linux, the held apps together
+also keep to about a quarter of the processor threads, on the weakest cores: one of four, two of
+eight, and one of two or three. That is what lets Saver use less when the computer still has
+processor to spare, and it is why held work takes longer than in Performance mode. macOS gives a
+normal program no way to do this. Spry itself also looks less often: every four seconds while
 its window is open, every eight on a calm machine. The app in front, the apps you set to "never
 slow" and the built-in "never touched" list stay exempt. "Lend idle time" is kept for when you
 switch to Performance.
@@ -242,7 +253,7 @@ What Saver mode saves is processor work, and with it heat and fan noise. It is n
 and battery life has not been measured. It does not shrink the memory of other apps: on macOS and
 Linux the system decides about memory; on Windows held apps get a low memory priority.
 
-**Measured on the test machines**, Spry 0.6.3, by `spry bench`: the app in front rests and the
+**Measured on the test machines**, Spry 0.6.4, by `spry bench`: the app in front rests and the
 background is held the way Saver mode holds it. The same machines and the same test as under
 [What you get](#what-you-get), and once more with two busy background processes only, because a
 computer is not always overloaded.
@@ -250,28 +261,28 @@ computer is not always overloaded.
 <!-- bench-saver:start -->
 **More busy processes than processor threads** (the load of the tables above):
 
-| System | Runs | Threads | Busy processes | Kept free | Work the held apps get done, Spry off = 100% (lowest-highest) | Whole computer busy, off -> Saver (lowest-highest) | Gain for the app in front in the same runs (lowest-highest) |
-|---|---|---|---|---|---|---|---|
-| Windows, x64 | 11 | 4 | 8 | 2 | **49%** (48-51) | 100% -> **52%** (50-61) | 1.34x (1.27-1.44) |
-| macOS 15, Apple silicon | 11 | 3 | 6 | none | **70%** (43-92) | 100% -> **100%** (100-100) | 2.13x (1.59-2.31) |
-| macOS 15, Intel | 11 | 4 | 8 | none | **93%** (60-111) | 100% -> **100%** (100-100) | 2.38x (0.44-11.76) |
-| Linux (Ubuntu), x64 | 11 | 4 | 8 | 2 | **50%** (50-50) | 100% -> **50%** (50-51) | 2.77x (1.88-3.33) |
-| Windows, x64, on 2 threads only | 11 | 2 | 4 | 1 | **50%** (50-56) | 51% -> **26%** (25-35) | 2.98x (2.00-3.01) |
-| Linux (Ubuntu), x64, on 2 threads only | 11 | 2 | 4 | 1 | **50%** (50-54) | 50% -> **25%** (25-25) | 2.52x (2.29-2.67) |
-| Linux (Ubuntu), ARM64 | 11 | 4 | 8 | 1 | **75%** (75-75) | 100% -> **75%** (75-75) | 2.57x (1.79-2.98) |
-| Linux (Ubuntu), ARM64, on 2 threads only | 11 | 2 | 4 | 1 | **50%** (50-50) | 50% -> **25%** (25-26) | 3.01x (2.02-3.03) |
+| System | Runs | Threads | Busy processes | Threads the held apps run on | Work the held apps get done, Spry off = 100% (lowest-highest) | Whole computer busy, off -> Saver (lowest-highest) | The same two on 0.6.3 | Gain for the app in front in the same runs (lowest-highest) |
+|---|---|---|---|---|---|---|---|---|
+| Windows, x64 | 6 | 4 | 8 | 1 of 4 | **25%** (24-27) | 100% -> **28%** (26-31) | 49%, 52% busy | 1.38x (1.30-1.42) |
+| macOS 15, Apple silicon | 6 | 3 | 6 | all | **48%** (8-87) | 100% -> **100%** (100-100) | 70%, 100% busy | 2.40x (1.93-2.65) |
+| macOS 15, Intel | 6 | 4 | 8 | all | **94%** (75-105) | 100% -> **100%** (100-100) | 93%, 100% busy | 2.92x (1.87-4.90) |
+| Linux (Ubuntu), x64 | 6 | 4 | 8 | 1 of 4 | **26%** (25-27) | 100% -> **25%** (25-25) | 50%, 50% busy | 2.24x (1.98-2.56) |
+| Windows, x64, on 2 threads only | 6 | 2 | 4 | 1 of 2 | **50%** (50-56) | 50% -> **26%** (25-26) | 50%, 26% busy | 2.98x (2.97-3.81) |
+| Linux (Ubuntu), x64, on 2 threads only | 6 | 2 | 4 | 1 of 2 | **50%** (50-53) | 50% -> **25%** (25-25) | 50%, 25% busy | 2.49x (2.42-2.58) |
+| Linux (Ubuntu), ARM64 | 6 | 4 | 8 | 1 of 4 | **25%** (25-25) | 100% -> **25%** (25-25) | 75%, 75% busy | 2.69x (2.08-2.99) |
+| Linux (Ubuntu), ARM64, on 2 threads only | 6 | 2 | 4 | 1 of 2 | **50%** (50-50) | 50% -> **25%** (25-25) | 50%, 25% busy | 3.00x (2.03-3.01) |
 
 **Two busy processes only**, so with processor to spare:
 
-| System | Runs | Threads | Busy processes | Kept free | Work the held apps get done, Spry off = 100% (lowest-highest) | Whole computer busy, off -> Saver (lowest-highest) | Gain for the app in front in the same runs (lowest-highest) |
-|---|---|---|---|---|---|---|---|
-| Windows, x64 | 6 | 4 | 2 | 2 | **98%** (94-100) | 50% -> **50%** (50-51) | 1.05x (1.00-1.09) |
-| macOS 15, Apple silicon | 6 | 3 | 2 | none | **82%** (68-95) | 89% -> **79%** (73-82) | 1.04x (0.84-1.17) |
-| macOS 15, Intel | 6 | 4 | 2 | none | **97%** (42-100) | 59% -> **53%** (52-100) | 1.06x (0.93-1.55) |
-| Linux (Ubuntu), x64 | 6 | 4 | 2 | 2 | **96%** (94-100) | 50% -> **50%** (50-50) | 1.10x (1.00-1.11) |
-| Linux (Ubuntu), ARM64 | 6 | 4 | 2 | 1 | **100%** (100-100) | 50% -> **50%** (50-51) | 1.00x (1.00-1.00) |
+| System | Runs | Threads | Busy processes | Threads the held apps run on | Work the held apps get done, Spry off = 100% (lowest-highest) | Whole computer busy, off -> Saver (lowest-highest) | The same two on 0.6.3 | Gain for the app in front in the same runs (lowest-highest) |
+|---|---|---|---|---|---|---|---|---|
+| Windows, x64 | 6 | 4 | 2 | 1 of 4 | **50%** (50-50) | 50% -> **25%** (25-25) | 98%, 50% busy | 1.08x (1.05-1.11) |
+| macOS 15, Apple silicon | 6 | 3 | 2 | all | **73%** (4-86) | 86% -> **82%** (75-100) | 82%, 79% busy | 1.00x (0.91-1.03) |
+| macOS 15, Intel | 6 | 4 | 2 | all | **92%** (70-96) | 53% -> **53%** (52-100) | 97%, 53% busy | 1.02x (0.92-1.46) |
+| Linux (Ubuntu), x64 | 6 | 4 | 2 | 1 of 4 | **50%** (50-50) | 50% -> **25%** (25-25) | 96%, 50% busy | 1.09x (1.04-1.10) |
+| Linux (Ubuntu), ARM64 | 6 | 4 | 2 | 1 of 4 | **50%** (50-50) | 50% -> **25%** (25-25) | 100%, 50% busy | 1.00x (1.00-1.00) |
 
-Each row is the median over its CI runs of the 0.6.3 code ([44660688597](https://github.com/juw12/spry/actions/runs/44660688597), [44660697840](https://github.com/juw12/spry/actions/runs/44660697840), [44660706129](https://github.com/juw12/spry/actions/runs/44660706129), [44660714265](https://github.com/juw12/spry/actions/runs/44660714265), [44660722516](https://github.com/juw12/spry/actions/runs/44660722516), [44661399638](https://github.com/juw12/spry/actions/runs/44661399638), [44661407887](https://github.com/juw12/spry/actions/runs/44661407887), [44661417018](https://github.com/juw12/spry/actions/runs/44661417018), [44661425398](https://github.com/juw12/spry/actions/runs/44661425398), [44661433237](https://github.com/juw12/spry/actions/runs/44661433237), [44662489281](https://github.com/juw12/spry/actions/runs/44662489281)). The first table has 11 runs per row, the second 6: the two-process test was added to CI after the first runs.
+Each row is the median over its CI runs of the 0.6.4 code ([44668866888](https://github.com/juw12/spry/actions/runs/44668866888), [44669537954](https://github.com/juw12/spry/actions/runs/44669537954), [44669545117](https://github.com/juw12/spry/actions/runs/44669545117), [44669552273](https://github.com/juw12/spry/actions/runs/44669552273), [44669559397](https://github.com/juw12/spry/actions/runs/44669559397), [44669566421](https://github.com/juw12/spry/actions/runs/44669566421)): 6 runs per row. The 0.6.3 column is the median over the runs of the 0.6.3 code ([44660688597](https://github.com/juw12/spry/actions/runs/44660688597), [44660697840](https://github.com/juw12/spry/actions/runs/44660697840), [44660706129](https://github.com/juw12/spry/actions/runs/44660706129), [44660714265](https://github.com/juw12/spry/actions/runs/44660714265), [44660722516](https://github.com/juw12/spry/actions/runs/44660722516), [44661399638](https://github.com/juw12/spry/actions/runs/44661399638), [44661407887](https://github.com/juw12/spry/actions/runs/44661407887), [44661417018](https://github.com/juw12/spry/actions/runs/44661417018), [44661425398](https://github.com/juw12/spry/actions/runs/44661425398), [44661433237](https://github.com/juw12/spry/actions/runs/44661433237), [44662489281](https://github.com/juw12/spry/actions/runs/44662489281)): 11 runs per row in the first table, 6 in the second.
 <!-- bench-saver:end -->
 
 - **Work the held apps get done** is the price: what the busy background processes still finish,
@@ -280,33 +291,41 @@ Each row is the median over its CI runs of the 0.6.3 code ([44660688597](https:/
   system, with Spry off and in Saver mode. On the "2 threads only" rows the test is confined to
   two of the machine's four threads and the reading is over all four, so 50% there is two full
   threads.
+- **Threads the held apps run on** is how many processor threads the held apps share in Saver
+  mode. "all" on macOS, where a normal program cannot set this.
+- **The same two on 0.6.3** is the work the held apps got done and how busy the computer was in
+  Saver mode with the 0.6.3 code, which only kept held apps off the kept-free threads.
 - **Gain for the app in front** is the test of [What you get](#what-you-get) in these runs.
 
 **What these numbers say, plainly:**
 
-- On Windows and Linux, Saver mode lowered processor use only when there were more busy processes
-  than processor threads. Held apps are kept off the kept-free threads, so the computer went from
-  100% busy to about 50% (to 75% on ARM64, where one thread of four is kept free) and the held
-  apps got half (three quarters) of their work done.
-- With two busy processes and processor to spare, Saver mode saved nothing on Windows and Linux:
-  50% busy with Spry off, 50% in Saver mode, and the held apps kept 96% to 100% of their speed.
-  Two busy apps fit on the threads that are left to them. The lower priority and Windows'
-  Efficiency mode decide who goes first, not how much is done. (Efficiency mode can also lower the
-  processor's clock speed on a real laptop. A virtual test machine cannot show that, and it has
-  not been measured.)
-- On the two macOS test machines the computer stayed 100% busy under the full load, and the held
-  apps kept 70% (Apple silicon, 43% to 92% between runs) and 93% (Intel) of their speed. With two
-  busy processes it went from 89% to 79% and from 59% to 53%, with a wide spread. macOS gives a
-  normal program a lower priority for another app, not a cap. On the real MacBook below the same
-  hold did much more (72% busy to 39%) than on these virtual Macs. Which of the two your Mac
-  resembles is not known until you measure it.
-- The macOS Intel test machine was itself slow in three of the eleven runs (a quarter of its usual
-  speed with nothing else running). Two of those runs gave the app in front 11.76x and 0.44x.
-  They are kept in the table and say nothing about Spry.
-- So "uses less processor" is measured for an overloaded Windows or Linux machine and for one real
-  Mac. On a Windows or Linux machine with processor to spare, Saver mode today changes the order
-  of work, as Performance does, and does not lower how much is done. Press **Measure now** or run
-  `spry bench` to see which case your computer is.
+- On Windows and Linux, Saver mode now lowers processor use also when the computer has processor
+  to spare. With two busy processes on four threads the computer went from 50% busy to 25% on all
+  three machines; with 0.6.3 it stayed at 50%. The price: the two held apps share one thread and
+  got 50% of their work done, where 0.6.3 left them 96% to 100%.
+- Under the full load the computer went from 100% busy to 25% on Linux and 28% on Windows. With
+  0.6.3 it went to 50%, 52% and 75% (ARM64). The held apps got about a quarter of their work done;
+  with 0.6.3 it was about half, and three quarters on ARM64.
+- On the "2 threads only" rows nothing changed against 0.6.3. One of the two threads was already
+  kept free, so the held apps were on one thread before as well.
+- So the price is real. In these tests a busy job in the background took two to four times as long
+  in Saver mode on Windows and Linux. If you are waiting for that job, bring its window to the
+  front, set the app to "never slow", or choose Performance mode.
+- On the two macOS test machines 0.6.4 changes nothing, because macOS gives a normal program a
+  lower priority for another app, not a cap. Under the full load the computer stayed 100% busy and
+  the held apps got 48% (Apple silicon, 8% to 87% between runs) and 94% (Intel) of their work
+  done. With two busy processes it went from 86% to 82% and from 53% to 53%. On the real MacBook
+  below the same hold did much more (72% busy to 39%) than on these virtual Macs. Which of the two
+  your Mac resembles is not known until you measure it.
+- The macOS Intel test machine was itself slow in five of the six full-load runs: with nothing
+  else running it did 35 to 116 steps per second, where it usually does about 250. Its rows are
+  kept in the table and say little about Spry.
+- Efficiency mode on Windows can also lower the processor's clock speed on a real laptop. A
+  virtual test machine cannot show that, and it has not been measured.
+- So "uses less processor" is measured on Windows and Linux test machines under both loads, and on
+  one real Mac with 0.5.0. The test machines are virtual and have four threads. A real laptop with
+  0.6.4 in Saver mode has not been measured. Press **Measure now** or run `spry bench` to see what
+  your computer does.
 
 **On a real, busy Windows PC.** The author's PC (8 threads, busy with his own jobs), the released
 0.6.3, three readings of `spry bench` taken by hand and kept in `docs/bench/by-hand/`:
@@ -355,9 +374,11 @@ itself; "Freeze in background" stays a rule you set per app.
 - While the app in front works and the machine is under pressure, background apps on Windows and
   Linux run on fewer processor threads (on a 4-thread machine: 2), so they take longer. That is the
   price of the gain above. In Performance mode they get every thread back when the app in front
-  rests; in Saver mode they stay on fewer threads.
+  rests. In Saver mode they stay on about a quarter of the threads all the time (on a 4-thread
+  machine: 1), which in the tests cost them half to three quarters of their speed.
 - The downloads are not signed yet, so Windows and macOS warn on first start (see Install). They
-  can be checked another way: see "Check a download" under Install.
+  can be checked another way: see "Check a download" under Install. What signing needs, and what
+  is already prepared for it, is in [docs/signing.md](docs/signing.md).
 
 ## Install
 
@@ -497,7 +518,8 @@ the computer is calm) it measures all running apps.
 - An app you just left keeps full speed for 10 seconds.
 - A background app that uses more than 10% of one processor core is **eased**: it only gets the
   processor when the app in front does not need it.
-- In Saver mode easing is always the deeper kind and nothing is lent (see
+- In Saver mode easing is always the deeper kind, nothing is lent, and on Windows and Linux held
+  apps keep to about a quarter of the processor threads (see
   [Saver and Performance](#saver-and-performance)). The next two points describe Performance mode.
 - When the whole processor is above 80% for 4 seconds, easing goes deeper. On Windows and Linux,
   eased apps then stay off part of the processor (about a quarter of the threads, in whole cores,
@@ -517,9 +539,9 @@ What "eased" means on each system:
 
 | System | Eased | Notes |
 |---|---|---|
-| Windows 10/11 | Lower priority class. Under pressure also Efficiency mode, low memory priority, and part of the processor kept free. | Also releases unused memory of large background apps when memory runs low. An app that picked its own processor threads keeps them. |
+| Windows 10/11 | Lower priority class. Under pressure also Efficiency mode, low memory priority, and part of the processor kept free. In Saver mode that is so all the time, on about a quarter of the processor threads. | Also releases unused memory of large background apps when memory runs low. An app that picked its own processor threads keeps them. |
 | macOS 11+ | The system's background state (what `taskpolicy -b` sets): lowest processor priority, throttled disk. | Apple silicon and Intel. |
-| Linux | Idle disk priority. Under pressure part of the processor is kept free. | A normal user cannot raise a priority again after lowering it, so Spry does not lower it; which threads an app may use can be put back, so Spry uses that, and gives every thread back exactly what it had. |
+| Linux | Idle disk priority. Under pressure part of the processor is kept free. In Saver mode that is so all the time, on about a quarter of the processor threads. | A normal user cannot raise a priority again after lowering it, so Spry does not lower it; which threads an app may use can be put back, so Spry uses that, and gives every thread back exactly what it had. |
 
 ## Safety
 
@@ -554,7 +576,7 @@ Each promise above has a test with a name you can read, run on every change:
 
 | Promise | Test |
 |---|---|
-| Everything is put back, exactly | `easing_shows_and_is_put_back_exactly`, `freezing_stops_the_process_and_thawing_starts_it_again`, `under_pressure_part_of_the_processor_is_kept_free_and_given_back` in [tests/roundtrip.rs](https://github.com/juw12/spry/blob/main/tests/roundtrip.rs) |
+| Everything is put back, exactly | `easing_shows_and_is_put_back_exactly`, `freezing_stops_the_process_and_thawing_starts_it_again`, `under_pressure_part_of_the_processor_is_kept_free_and_given_back`, `saver_mode_keeps_a_held_app_to_a_few_threads_and_gives_them_back` in [tests/roundtrip.rs](https://github.com/juw12/spry/blob/main/tests/roundtrip.rs) |
 | Put back after Spry is killed | `eases_shows_restores_and_rescues` in [tests/end_to_end.rs](https://github.com/juw12/spry/blob/main/tests/end_to_end.rs) |
 | An app's own choice is left alone | `a_priority_the_app_set_itself_is_never_undone`, `a_choice_the_app_made_itself_while_eased_is_left_alone` in [tests/roundtrip.rs](https://github.com/juw12/spry/blob/main/tests/roundtrip.rs) |
 | Held apps get full speed while the app in front rests, and the hold is back within 3 seconds | `lends_while_the_front_app_rests_and_holds_again_when_it_works` in [tests/end_to_end.rs](https://github.com/juw12/spry/blob/main/tests/end_to_end.rs), `lending_gives_the_speed_back_and_the_hold_can_return`, `the_fresh_reading_sees_the_front_app_work_and_rest`, `the_main_reading_sees_a_process_stop_completely` in [tests/roundtrip.rs](https://github.com/juw12/spry/blob/main/tests/roundtrip.rs), `held_apps_are_lent_the_time_while_the_front_app_rests`, `nothing_is_lent_when_switched_off_by_rule_or_without_a_known_front_app` in [src/policy.rs](https://github.com/juw12/spry/blob/main/src/policy.rs) |
@@ -613,6 +635,7 @@ spry front        show the process id of the app in front (checks that Spry can 
 `spry bench --threads 2` runs the measurement on two processor threads only (Windows and Linux).
 Since 0.6.3 `spry bench` also reports Saver mode: what the held apps get done while the app in
 front rests, and how busy the whole computer is then, with Spry off and with the hold kept.
+Since 0.6.4 it also prints how many processor threads the held apps keep to in Saver mode.
 
 On Windows, Spry is a windowed program, so in a terminal add `| more` to read the output of
 `spry status` or `spry bench`.

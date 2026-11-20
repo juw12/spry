@@ -417,6 +417,12 @@ fn lends_while_the_front_app_rests_and_holds_again_when_it_works() {
         "after 13 s of rest every busy app is still held in Saver mode\n{}",
         report()
     );
+    // Where the system lets Spry choose the threads, Saver mode keeps held apps to a few of them.
+    let few = platform::few_count() as u32;
+    if by_threads && few > 0 {
+        let open: Vec<Option<u32>> = before.iter().map(|b| platform::cpus_open(b.0)).collect();
+        assert!(open.iter().all(|o| *o == Some(few)), "Saver mode: {few} thread(s) each, found {open:?}\n{}", report());
+    }
     platform::resume(front.0).expect("the app in front works again");
 
     // 5. Quitting puts everything back exactly.

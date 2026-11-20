@@ -69,6 +69,8 @@ pub struct Report {
     pub burners: usize,
     /// Processor threads eased apps keep off under pressure (0 = this system has no such lever).
     pub kept_free: usize,
+    /// Processor threads held apps keep to in Saver mode (0 = this system has no such lever).
+    pub few: usize,
     pub secs: f64,
     pub quiet: Phase,
     pub busy: Phase,
@@ -345,13 +347,14 @@ pub fn run(secs: f64, burners: usize) -> std::io::Result<Report> {
     // Now the app in front rests. The ways of holding take turns, five rounds, and each is
     // compared with "left alone" in the same round. The middle round counts, so a machine
     // whose speed drifts or stumbles once (shared test machines do both) cannot favour one.
+    // "Held" is the hold of Saver mode: deep, and on a few processor threads where that can be set.
     const ROUNDS: usize = 5;
     let rest = || sleep(Duration::from_secs_f64(secs / 5.0));
     let (mut held, mut pulsed_rest, mut lent, mut off) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     let (mut busy_held, mut busy_off) = (Vec::new(), Vec::new());
     let mut meter = Meter::start();
     for _ in 0..ROUNDS {
-        hold(&saved, Hold::Deep);
+        hold(&saved, Hold::Saver);
         let (speed, busy) = kids.speed_and_busy(&mut meter, rest);
         held.push(speed);
         busy_held.extend(busy);
@@ -398,6 +401,7 @@ pub fn run(secs: f64, burners: usize) -> std::io::Result<Report> {
         cores: cores(),
         burners,
         kept_free: platform::kept_free_count(),
+        few: platform::few_count(),
         secs,
         quiet,
         busy,
@@ -457,5 +461,8 @@ pub fn print(r: &Report) {
         println!(
             "\nThe whole computer while the app in front rests: {off:.0}% busy with Spry off, {held:.0}% in Saver mode."
         );
+    }
+    if r.few > 0 {
+        println!("In Saver mode held apps keep to {} of the {} processor threads.", r.few, r.cores);
     }
 }

@@ -2,7 +2,7 @@
 //! visible, and every change must be put back exactly.
 
 use spry::engine::{Pulse, Sampler};
-use spry::platform;
+use spry::platform::{self, Hold};
 use std::collections::HashSet;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Mutex, MutexGuard};
@@ -69,10 +69,10 @@ fn easing_shows_and_is_put_back_exactly() {
     let before = platform::read_level(burner.pid()).expect("read the starting state");
     let saved = platform::save(burner.pid()).expect("save the starting state");
 
-    for deep in [false, true] {
-        platform::apply(burner.pid(), &saved, deep).expect("ease the process");
+    for how in [Hold::Eased, Hold::Deep, Hold::Saver] {
+        platform::apply(burner.pid(), &saved, how).expect("ease the process");
         let eased = platform::read_level(burner.pid()).expect("read the eased state");
-        assert_ne!(eased, before, "easing (deep = {deep}) must change the state the system reports");
+        assert_ne!(eased, before, "easing ({how:?}) must change the state the system reports");
     }
 
     platform::restore(burner.pid(), &saved).expect("put the process back");
@@ -92,13 +92,13 @@ fn lending_gives_the_speed_back_and_the_hold_can_return() {
     let saved = platform::save(pid).expect("save the starting state");
 
     for round in 0..2 {
-        platform::hold(pid, &saved, platform::Hold::Deep).expect("hold under pressure");
+        platform::hold(pid, &saved, Hold::Deep).expect("hold under pressure");
         assert_ne!(platform::read_level(pid), Some(before), "round {round}: the hold must show");
         if let Some(all) = all.filter(|_| kept > 0) {
             assert_eq!(platform::cpus_open(pid), Some(all - kept), "round {round}: kept-free threads are closed");
         }
 
-        platform::hold(pid, &saved, platform::Hold::Lent).expect("lend the idle time");
+        platform::hold(pid, &saved, Hold::Lent).expect("lend the idle time");
         assert_eq!(platform::cpus_open(pid), all, "round {round}: lent, every processor thread is open again");
         if cfg!(any(target_os = "macos", windows)) {
             assert_eq!(platform::read_level(pid), Some(before), "round {round}: lent, the state is as it was found");
@@ -106,7 +106,7 @@ fn lending_gives_the_speed_back_and_the_hold_can_return() {
         assert!(burner.load(Duration::from_millis(600)) > 0.2, "round {round}: lent, the process runs");
     }
 
-    platform::hold(pid, &saved, platform::Hold::Deep).expect("the app in front works again");
+    platform::hold(pid, &saved, Hold::Deep).expect("the app in front works again");
     platform::restore(pid, &saved).expect("put the process back");
     assert_eq!(platform::read_level(pid), Some(before), "the starting state must come back exactly");
     assert_eq!(platform::cpus_open(pid), all, "and every processor thread is open");
@@ -224,9 +224,9 @@ fn a_priority_the_app_set_itself_is_never_undone() {
     let burner = Burner::start();
     set_class(burner.pid(), IDLE_PRIORITY_CLASS);
     let saved = platform::save(burner.pid()).unwrap();
-    platform::apply(burner.pid(), &saved, false).unwrap();
+    platform::apply(burner.pid(), &saved, Hold::Eased).unwrap();
     set_class(burner.pid(), NORMAL_PRIORITY_CLASS);
-    platform::apply(burner.pid(), &saved, true).unwrap();
+    platform::apply(burner.pid(), &saved, Hold::Deep).unwrap();
     assert_eq!(platform::read_level(burner.pid()), Some(NORMAL_PRIORITY_CLASS as i64), "not lowered again");
     platform::restore(burner.pid(), &saved).unwrap();
     assert_eq!(
@@ -239,7 +239,7 @@ fn a_priority_the_app_set_itself_is_never_undone() {
     drop(burner);
     let burner = Burner::start();
     let saved = platform::save(burner.pid()).unwrap();
-    platform::apply(burner.pid(), &saved, false).unwrap();
+    platform::apply(burner.pid(), &saved, Hold::Eased).unwrap();
     set_class(burner.pid(), IDLE_PRIORITY_CLASS);
     platform::restore(burner.pid(), &saved).unwrap();
     assert_eq!(platform::read_level(burner.pid()), Some(IDLE_PRIORITY_CLASS as i64), "the app's own choice stays");
@@ -257,21 +257,59 @@ fn under_pressure_part_of_the_processor_is_kept_free_and_given_back() {
     }
     let saved = platform::save(pid).expect("save the starting state");
 
-    platform::apply(pid, &saved, false).expect("ease without pressure");
+    platform::apply(pid, &saved, Hold::Eased).expect("ease without pressure");
     assert_eq!(platform::cpus_open(pid), Some(before), "without pressure every processor thread stays open");
 
-    platform::apply(pid, &saved, true).expect("ease under pressure");
+    platform::apply(pid, &saved, Hold::Deep).expect("ease under pressure");
     assert_eq!(platform::cpus_open(pid), Some(before - kept), "under pressure the kept-free threads are closed");
 
-    platform::apply(pid, &saved, false).expect("pressure is over");
+    platform::apply(pid, &saved, Hold::Eased).expect("pressure is over");
     assert_eq!(platform::cpus_open(pid), Some(before), "when pressure ends they are open again");
 
-    platform::apply(pid, &saved, true).expect("ease under pressure");
+    platform::apply(pid, &saved, Hold::Deep).expect("ease under pressure");
     platform::restore(pid, &saved).expect("put the process back");
     assert_eq!(platform::cpus_open(pid), Some(before), "letting go opens every thread again");
 
     // Spry was killed and started again: nothing is remembered but the saved state on disk.
-    platform::apply(pid, &saved, true).expect("ease under pressure");
+    platform::apply(pid, &saved, Hold::Deep).expect("ease under pressure");
+    platform::forget(pid);
+    platform::restore(pid, &saved).expect("put the process back from the saved state alone");
+    assert_eq!(platform::cpus_open(pid), Some(before), "the rescue opens every thread again");
+    assert!(burner.load(Duration::from_millis(600)) > 0.2, "the process must still be running");
+}
+
+/// Saver mode: a held app keeps to a few processor threads all the time, the hold under
+/// pressure and the lend can take over from it, and letting go opens every thread again.
+#[test]
+fn saver_mode_keeps_a_held_app_to_a_few_threads_and_gives_them_back() {
+    let burner = Burner::start();
+    let pid = burner.pid();
+    let (kept, few) = (platform::kept_free_count() as u32, platform::few_count() as u32);
+    // macOS has no such lever, and a machine with one processor thread has no choice to make.
+    let Some(before) = platform::cpus_open(pid) else { return };
+    if few == 0 {
+        return;
+    }
+    assert!(few <= before - kept && few <= (before / 4).max(1), "{few} of {before} threads, {kept} kept free");
+    let saved = platform::save(pid).expect("save the starting state");
+
+    platform::hold(pid, &saved, Hold::Saver).expect("hold as Saver mode does");
+    assert_eq!(platform::cpus_open(pid), Some(few), "Saver mode: a few threads only");
+    assert!(burner.load(Duration::from_millis(600)) > 0.2, "the process still runs, on those");
+
+    platform::hold(pid, &saved, Hold::Deep).expect("Performance mode under pressure");
+    assert_eq!(platform::cpus_open(pid), Some(before - kept), "only the kept-free threads stay closed");
+    platform::hold(pid, &saved, Hold::Saver).expect("back to Saver mode");
+    assert_eq!(platform::cpus_open(pid), Some(few), "the few threads again");
+    platform::hold(pid, &saved, Hold::Lent).expect("Performance mode, the app in front rests");
+    assert_eq!(platform::cpus_open(pid), Some(before), "lent: every processor thread is open");
+
+    platform::hold(pid, &saved, Hold::Saver).expect("hold as Saver mode does");
+    platform::restore(pid, &saved).expect("put the process back");
+    assert_eq!(platform::cpus_open(pid), Some(before), "letting go opens every thread again");
+
+    // Spry was killed and started again: nothing is remembered but the saved state on disk.
+    platform::hold(pid, &saved, Hold::Saver).expect("hold as Saver mode does");
     platform::forget(pid);
     platform::restore(pid, &saved).expect("put the process back from the saved state alone");
     assert_eq!(platform::cpus_open(pid), Some(before), "the rescue opens every thread again");
@@ -285,7 +323,7 @@ fn a_choice_the_app_made_itself_while_eased_is_left_alone() {
     let burner = Burner::start();
     let pid = burner.pid();
     let saved = platform::save(pid).expect("save the starting state");
-    platform::apply(pid, &saved, true).expect("ease under pressure");
+    platform::apply(pid, &saved, Hold::Deep).expect("ease under pressure");
 
     let own_disk: libc::c_long = (2 << 13) | 6; // best effort, level 6
     let mut allowed = [0u64; 16];
