@@ -377,6 +377,8 @@ impl Engine {
         }
         self.refused.retain(|pid, start| by_pid.get(pid).is_some_and(|p| p.start == *start));
 
+        // Processes that are held for the first time now: what each looked like before.
+        let mut fresh: Vec<(u32, Level, Hold, Saved)> = vec![];
         for (&pid, &level) in &plan.levels {
             let Some(p) = by_pid.get(&pid) else { continue };
             if self.refused.contains_key(&pid) {
@@ -395,21 +397,39 @@ impl Engine {
                     changed |= t.level != level;
                     t.level = level;
                 }
-                None => {
-                    let done = platform::save(pid).and_then(|s| platform::hold(pid, &s, hold).map(|_| s));
-                    match done {
-                        Ok(saved) => {
-                            let (name, start) = (p.name.clone(), p.start);
-                            let t = Touched { name, start, level, saved, frozen: false, hold, since: Instant::now() };
-                            self.touched.insert(pid, t);
-                            self.events += 1;
-                            changed = true;
-                        }
-                        Err(_) => {
-                            self.refused.insert(pid, p.start);
-                        }
+                None => match platform::save(pid) {
+                    Ok(saved) => fresh.push((pid, level, hold, saved)),
+                    Err(_) => {
+                        self.refused.insert(pid, p.start);
                     }
-                }
+                },
+            }
+        }
+
+        // The list on disk comes first: it names every process this round is about to touch or
+        // stop, so a Spry that is killed in the middle leaves nothing the next start cannot put back.
+        if changed || !fresh.is_empty() {
+            let about_to: Vec<Held> = fresh
+                .iter()
+                .map(|&(pid, level, _, saved)| Held {
+                    pid,
+                    start: by_pid[&pid].start,
+                    saved,
+                    stopped: matches!(level, Level::Pulse | Level::Freeze),
+                })
+                .collect();
+            self.write_state(about_to);
+        }
+        for (pid, level, hold, saved) in fresh {
+            let p = by_pid[&pid];
+            changed = true;
+            if platform::hold(pid, &saved, hold).is_ok() {
+                let (name, start) = (p.name.clone(), p.start);
+                let t = Touched { name, start, level, saved, frozen: false, hold, since: Instant::now() };
+                self.touched.insert(pid, t);
+                self.events += 1;
+            } else {
+                self.refused.insert(pid, p.start);
             }
         }
 
@@ -431,7 +451,7 @@ impl Engine {
             }
         }
         if changed {
-            self.write_state();
+            self.write_state(vec![]);
         }
     }
 
@@ -460,16 +480,17 @@ impl Engine {
             self.release(pid);
         }
         self.pulse.set(vec![]);
-        self.write_state();
+        self.write_state(vec![]);
     }
 
     /// Keep a list on disk of what is held back, so a crash can be cleaned up on the next start.
-    fn write_state(&self) {
-        if self.touched.is_empty() {
+    /// `about_to`: processes that are held right after this, listed before they are touched.
+    fn write_state(&self, about_to: Vec<Held>) {
+        if self.touched.is_empty() && about_to.is_empty() {
             let _ = std::fs::remove_file(state_file());
             return;
         }
-        let held: Vec<Held> = self
+        let mut held: Vec<Held> = self
             .touched
             .iter()
             .map(|(pid, t)| Held {
@@ -479,9 +500,14 @@ impl Engine {
                 stopped: matches!(t.level, Level::Pulse | Level::Freeze),
             })
             .collect();
+        held.extend(about_to);
         let _ = std::fs::create_dir_all(config::data_dir());
         if let Ok(text) = serde_json::to_string(&held) {
-            let _ = std::fs::write(state_file(), text);
+            // Written next to the list and then put in its place, so the list is never half a file.
+            let whole = state_file().with_extension("json.new");
+            if std::fs::write(&whole, text).is_ok() && std::fs::rename(&whole, state_file()).is_err() {
+                let _ = std::fs::remove_file(&whole);
+            }
         }
     }
 }
