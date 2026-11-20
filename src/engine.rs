@@ -48,6 +48,8 @@ pub struct Shared {
     pub window: AtomicBool,
     /// Set by whoever wants that window in front: the tray, a second start, `spry open`.
     pub show: AtomicBool,
+    /// Set when Spry quits with that window open: after an update it comes back with it.
+    pub window_open: AtomicBool,
 }
 
 impl Shared {
@@ -67,6 +69,7 @@ impl Shared {
             watched: Mutex::new(None),
             window: AtomicBool::new(false),
             show: AtomicBool::new(false),
+            window_open: AtomicBool::new(false),
         })
     }
 
