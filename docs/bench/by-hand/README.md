@@ -26,3 +26,14 @@ held the author's other jobs while the app in front worked.
 `background.rest_share_held` is what the held processes got while the app in front rested and the
 hold was kept, as Saver mode keeps it; `background.rest_busy_off` and `background.rest_busy_held`
 are how busy the whole PC was then, in percent, with Spry off and with the hold kept.
+
+## 0.6.4, Saver mode (2026-11-20)
+
+`windows-pc-0.6.4-saver-1.json`, `windows-pc-0.6.4-saver-2.json` and
+`windows-pc-0.6.4-saver-2busy.json` are `spry bench --secs 4 --json` of the released 0.6.4 on the
+same PC (the last one with `--burners 2`), one after the other, right after `spry update` took the
+PC from 0.6.3 to 0.6.4 and the download matched its published checksum. Spry 0.6.4 was running
+there in Performance mode. The PC was busy with four of the author's own heavy jobs; `spry status`
+showed the processor 73 to 76% busy before the readings and 84% after them.
+
+`few` is the number of processor threads the held processes were kept to (2 of 8 here).
