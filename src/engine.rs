@@ -36,7 +36,12 @@ pub struct Shared {
     pub token: String,
     pub held: AtomicUsize,
     pub autostart: AtomicBool,
+    /// A newer released version, once the daily look has found one (update.rs).
     pub update: Mutex<Option<String>>,
+    /// Why the newer version could not be put in, for the page.
+    pub update_error: Mutex<Option<String>>,
+    /// Set together with `quit` when Spry is to start again, as the new version after an update.
+    pub restart: AtomicBool,
     /// When the dashboard last asked for the numbers.
     pub watched: Mutex<Option<Instant>>,
     /// True while this Spry can show the page in a window of its own (tray.rs).
@@ -57,6 +62,8 @@ impl Shared {
             held: AtomicUsize::new(0),
             autostart: AtomicBool::new(crate::install::is_installed()),
             update: Mutex::new(None),
+            update_error: Mutex::new(None),
+            restart: AtomicBool::new(false),
             watched: Mutex::new(None),
             window: AtomicBool::new(false),
             show: AtomicBool::new(false),
@@ -602,6 +609,9 @@ fn status_json(
         "can_trim": platform::CAN_TRIM,
         "autostart": shared.autostart.load(Ordering::Relaxed),
         "update": *shared.update.lock().unwrap(),
+        "update_error": *shared.update_error.lock().unwrap(),
+        "can_update": crate::update::possible(),
+        "spry_pid": std::process::id(),
         "config": cfg,
     })
     .to_string()

@@ -1,7 +1,8 @@
 name: install
 # Runs the two install scripts the README tells people to use, against the published
 # release, on each system - then checks that the installed Spry starts and answers,
-# that a changed download is refused, and that the download carries a build record.
+# that it updates itself from the release page and starts again, that a changed download
+# is refused, and that the download carries a build record.
 on:
   push:
     branches: [main]
@@ -42,6 +43,23 @@ jobs:
           sleep 5
           "$HOME/.local/bin/spry" version
           "$HOME/.local/bin/spry" status
+      # SPRY_UPDATE_AS makes this Spry take itself for an older one, so it fetches the release it
+      # was installed from, checks it, puts it in its own place and starts again.
+      - name: The installed Spry updates itself from the release page and starts again
+        run: |
+          spry="$HOME/.local/bin/spry"
+          if ! "$spry" help | grep -q "spry update"; then
+            echo "This release is from before 0.6 and cannot update itself."
+            exit 0
+          fi
+          running() { "$spry" status --json | sed -n 's/.*"spry_pid":\([0-9]*\).*/\1/p'; }
+          before="$(running)"
+          SPRY_UPDATE_AS=0.0.1 "$spry" update
+          sleep 10
+          after="$(running)"
+          echo "Spry was process $before and is process $after now"
+          test -n "$before" && test -n "$after" && test "$after" != "$before"
+          "$spry" status | head -n 2
       - name: What Spry itself costs after half a minute
         run: |
           sleep 30
@@ -100,6 +118,25 @@ jobs:
           & $spry version | Out-Host
           & $spry status | Out-Host
           if (-not (Get-Process spry -ErrorAction SilentlyContinue)) { throw "Spry is not running" }
+      - name: The installed Spry updates itself from the release page and starts again
+        shell: pwsh
+        run: |
+          $spry = Join-Path $env:LOCALAPPDATA "Programs\Spry\spry.exe"
+          if (-not ((& $spry help | Out-String) -match "spry update")) {
+            Write-Host "This release is from before 0.6 and cannot update itself."
+            exit 0
+          }
+          function Running { ((& $spry status --json | Out-String) | ConvertFrom-Json).spry_pid }
+          $before = Running
+          $env:SPRY_UPDATE_AS = "0.0.1"
+          & $spry update | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw "spry update failed" }
+          Remove-Item Env:SPRY_UPDATE_AS
+          Start-Sleep -Seconds 10
+          $after = Running
+          Write-Host "Spry was process $before and is process $after now"
+          if (-not $before -or -not $after -or $after -eq $before) { throw "Spry did not start again as the new version" }
+          & $spry status | Select-Object -First 2 | Out-Host
       - name: What Spry itself costs after half a minute
         shell: pwsh
         run: |

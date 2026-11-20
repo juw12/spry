@@ -3,7 +3,7 @@
 
 use crate::config::{Config, port};
 use crate::engine::Shared;
-use crate::{bench, clean, install};
+use crate::{bench, clean, install, update};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
@@ -140,6 +140,20 @@ fn handle(mut request: Request, shared: &Shared) {
                 Ok(()) => ok(),
                 Err(e) => (500, "text/plain", e.to_string()),
             }
+        }
+        // "Update now" on the page: the newer version is put in, and Spry starts again as it.
+        "/api/update" if post => {
+            let version = shared.update.lock().unwrap().clone();
+            match version.map(|version| update::install(shared, &version)) {
+                Some(Ok(())) => ok(),
+                Some(Err(e)) => (500, "text/plain", format!("Spry was not updated: {e}")),
+                None => (409, "text/plain", "This is the newest Spry.".into()),
+            }
+        }
+        // Asked by `spry update` after it has put a newer version in place.
+        "/api/restart" if post => {
+            update::restart(shared);
+            ok()
         }
         "/api/storage" => {
             let list = if post {

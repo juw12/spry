@@ -327,6 +327,7 @@ td.num { font-family: var(--mono); font-size: 13px; }
     <section class="view" data-view="settings" hidden>
       <div class="page-head"><div><h1>Settings</h1><p id="counts"></p></div><div class="actions"><button id="quit">Quit Spry</button></div></div>
       <div class="row"><input type="checkbox" id="autostart"><label for="autostart">Start Spry when I sign in</label></div>
+      <div class="row"><input type="checkbox" id="auto-update"><label for="auto-update">Update Spry automatically<br><span class="sub">Once a day Spry asks GitHub whether there is a newer version. Ticked, Spry downloads it, compares it with the published checksum and starts again as the new version; every app is put back for that moment. Unticked, Spry only tells you. Nothing about you or your apps is sent.</span></label></div>
       <h2 class="section-title">What Spry is for</h2>
       <div class="row"><input type="radio" name="mode" id="mode-saver" value="saver"><label for="mode-saver">Saver: use less<br><span class="sub">Busy apps stay held back for as long as they are in the background, also while you read or step away. The computer does less work, so it uses less processor and stays cooler. Work in the background takes longer.</span></label></div>
       <div class="row"><input type="radio" name="mode" id="mode-performance" value="performance"><label for="mode-performance">Performance: the app in front first<br><span class="sub">Busy background apps are held back only while the app in front is working. While it rests they run at full speed again, so the computer uses about as much as without Spry.</span></label></div>
@@ -516,6 +517,8 @@ function paintTrend() {
 window.addEventListener("resize", paintTrend);
 
 function render(s, fresh = true) {
+  // Spry started again as another version (an update): this page belongs to the old one.
+  if (state && state.version !== s.version) { location.reload(); return; }
   state = s;
   const saverMode = s.config.mode !== "performance";
   const saver = s.enabled && saverMode;
@@ -623,7 +626,7 @@ function render(s, fresh = true) {
     }
   }
 
-  for (const [id, on] of [["autostart", s.autostart], ["strong", s.config.strong], ["lend", s.config.lend], ["trim", s.config.trim_memory]]) {
+  for (const [id, on] of [["autostart", s.autostart], ["auto-update", s.config.auto_update], ["strong", s.config.strong], ["lend", s.config.lend], ["trim", s.config.trim_memory]]) {
     if (document.activeElement !== $(id)) $(id).checked = on;
   }
   for (const mode of ["saver", "performance"]) {
@@ -636,10 +639,33 @@ function render(s, fresh = true) {
   $("version").textContent = "Spry " + s.version;
   $("counts").textContent = s.events + " held back since start" + (s.can_trim ? ", " + s.trims + " memory releases" : "");
   const update = $("update");
+  const said = s.update ? [s.update, s.update_error, s.can_update].join("|") : "";
   update.hidden = !s.update;
-  if (s.update && !update.firstChild) {
-    update.append("Spry " + s.update + " is out. ",
-      el("a", { href: "https://github.com/juw12/spry/releases/latest", target: "_blank", rel: "noopener", textContent: "Get it" }));
+  if (update.dataset.said !== said && update.dataset.said !== "busy") {
+    update.dataset.said = said;
+    update.replaceChildren();
+    if (s.update) {
+      const byHand = el("a", { href: "https://github.com/juw12/spry/releases/latest", target: "_blank", rel: "noopener", textContent: s.can_update ? "Get it by hand" : "Get it" });
+      update.append("Spry " + s.update + " is out. ");
+      if (s.update_error) update.append("Spry could not update itself: " + s.update_error + ". ");
+      if (s.can_update) update.append(el("button", { textContent: s.update_error ? "Try again" : "Update now", onclick: updateNow }), " ");
+      if (s.update_error || !s.can_update) update.append(byHand);
+    }
+  }
+}
+// The newer version is downloaded, checked and put in; Spry then starts again and this page with it.
+async function updateNow() {
+  const update = $("update");
+  update.dataset.said = "busy";
+  update.replaceChildren("Getting the new version and checking it …");
+  try {
+    await api("/api/update", "POST");
+    update.replaceChildren("Spry is starting again as the new version.");
+    setTimeout(() => { update.dataset.said = ""; }, 20000);
+  } catch (e) {
+    update.dataset.said = "";
+    showError(e);
+    refresh();
   }
 }
 
@@ -696,6 +722,7 @@ for (const mode of ["saver", "performance"]) $("mode-" + mode).onchange = e => {
 $("strong").onchange = e => saveConfig(cfg => { cfg.strong = e.target.checked; });
 $("lend").onchange = e => saveConfig(cfg => { cfg.lend = e.target.checked; });
 $("trim").onchange = e => saveConfig(cfg => { cfg.trim_memory = e.target.checked; });
+$("auto-update").onchange = e => saveConfig(cfg => { cfg.auto_update = e.target.checked; });
 $("autostart").onchange = e => api("/api/autostart?on=" + (e.target.checked ? 1 : 0), "POST").then(refresh).catch(showError);
 // Asked on the page itself: Spry's own window has none of the browser's question boxes.
 function sure(question, yes) {

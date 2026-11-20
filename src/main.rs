@@ -2,11 +2,10 @@
 
 use spry::config::{self, Config, VERSION};
 use spry::engine::{self, Shared};
-use spry::{bench, clean, install, platform, server};
+use spry::{bench, clean, install, platform, server, update};
 use std::io::Write;
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const HELP: &str = "Spry keeps an old computer quick: it holds back background apps so the app you are
 using gets the machine. Everything is put back when Spry stops.
@@ -18,6 +17,7 @@ using gets the machine. Everything is put back when Spry stops.
   spry bench        measure the effect on this computer (under a minute)
   spry clean        show what storage can be cleared; add --yes to clear it
   spry install      start Spry when you sign in      (spry uninstall undoes it)
+  spry update       get the newest Spry now (Spry also looks once a day; see Settings)
   spry rescue       put processes back after a crash
   spry front        show the process id of the app in front (checks that Spry can see it)
   spry version
@@ -31,8 +31,9 @@ fn main() {
     let value = |flag: &str| args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1)).cloned();
 
     match args.first().map(String::as_str).unwrap_or("") {
-        "" => start(true, !has("--no-tray")),
-        "run" => start(false, !has("--no-tray")),
+        "" => start(true, !has("--no-tray"), has("--after-update")),
+        "run" => start(false, !has("--no-tray"), has("--after-update")),
+        "update" => update_now(),
         "open" => {
             if !open_page() {
                 println!("Spry is not running. Start it with: spry");
@@ -92,8 +93,15 @@ fn fail(message: &str) -> ! {
     std::process::exit(1)
 }
 
-fn start(open: bool, tray: bool) {
-    let Some(http) = server::bind() else {
+/// `after_update`: started by the version before it, which needs a moment to let go of the port.
+fn start(open: bool, tray: bool, after_update: bool) {
+    let asked = Instant::now();
+    let mut http = server::bind();
+    while http.is_none() && after_update && asked.elapsed() < Duration::from_secs(15) {
+        std::thread::sleep(Duration::from_millis(200));
+        http = server::bind();
+    }
+    let Some(http) = http else {
         // Already running: the port is the lock.
         if open {
             open_page();
@@ -108,12 +116,13 @@ fn start(open: bool, tray: bool) {
         cfg.save();
     }
     engine::recover();
+    update::tidy();
     let shared = Shared::new(cfg);
     server::serve(http, shared.clone());
 
     let on_signal = shared.clone();
     let _ = ctrlc::set_handler(move || on_signal.quit.store(true, Ordering::Relaxed));
-    watch_for_updates(shared.clone());
+    update::watch(shared.clone());
     let show = open || first_run;
 
     // With a tray icon Spry has a window of its own for the page.
@@ -129,30 +138,29 @@ fn start(open: bool, tray: bool) {
         platform::open_url(&server::url(&shared.token));
     }
     engine::run_loop(&shared);
+    update::relaunch(&shared, false);
 }
 
-/// Once a day, ask GitHub for the newest release. Only tells; never installs anything.
-fn watch_for_updates(shared: Arc<Shared>) {
-    std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_secs(30));
-        loop {
-            let out = platform::command("curl")
-                .args(["-fsSL", "-m", "10", "https://api.github.com/repos/juw12/spry/releases/latest"])
-                .output();
-            if let Ok(out) = out {
-                let latest = serde_json::from_slice::<serde_json::Value>(&out.stdout)
-                    .ok()
-                    .and_then(|v| v["tag_name"].as_str().map(|s| s.trim_start_matches('v').to_string()));
-                if let Some(latest) = latest {
-                    let number = |v: &str| v.split('.').filter_map(|p| p.parse::<u32>().ok()).collect::<Vec<_>>();
-                    if number(&latest) > number(VERSION) {
-                        *shared.update.lock().unwrap() = Some(latest);
-                    }
-                }
-            }
-            std::thread::sleep(Duration::from_secs(24 * 3600));
-        }
-    });
+/// `spry update`: the newest Spry now, without waiting for the daily look.
+fn update_now() {
+    let Some(newest) = update::latest() else {
+        fail("Could not find out which Spry is the newest. Is this computer online?")
+    };
+    let Some(version) = update::available() else {
+        println!("Spry {VERSION} is the newest (the latest release is {newest}).");
+        return;
+    };
+    println!("Getting Spry {version} ...");
+    if let Err(e) = update::apply(&version) {
+        fail(&format!("Spry was not updated: {e}."));
+    }
+    println!("Spry {version} is in the place of {VERSION}. The download matched its published checksum.");
+    // The Spry that is running puts every app back and starts again as the new version.
+    if server::send("POST", "/api/restart").is_some() {
+        println!("The running Spry is starting again as {version}.");
+    } else if ask("/api/status").is_some() {
+        println!("Quit the running Spry and start it again to use {version}.");
+    }
 }
 
 /// GET from the running Spry. None when it is not running.

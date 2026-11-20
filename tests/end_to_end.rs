@@ -92,7 +92,12 @@ impl Drop for Orphan {
 
 fn spry(home: &Path, port: u16, args: &[&str]) -> Command {
     let mut cmd = Command::new(SPRY);
-    cmd.args(args).env("SPRY_HOME", home).env("SPRY_PORT", port.to_string()).stdin(Stdio::null());
+    // These tests are about holding apps back: this Spry never looks for a newer version of itself.
+    cmd.args(args)
+        .env("SPRY_HOME", home)
+        .env("SPRY_PORT", port.to_string())
+        .env("SPRY_UPDATE_FROM", "")
+        .stdin(Stdio::null());
     cmd
 }
 

@@ -12,5 +12,6 @@ pub mod reference;
 pub mod server;
 #[cfg(any(windows, target_os = "macos"))]
 pub mod tray;
+pub mod update;
 #[cfg(any(windows, target_os = "macos"))]
 pub mod window;
