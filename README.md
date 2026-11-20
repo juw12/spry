@@ -328,18 +328,26 @@ Each row is the median over its CI runs of the 0.6.4 code ([44668866888](https:/
   your computer does.
 
 **On a real, busy Windows PC.** The author's PC (8 threads, busy with his own jobs), the released
-0.6.3, three readings of `spry bench` taken by hand and kept in `docs/bench/by-hand/`:
+0.6.3 and 0.6.4, three readings of `spry bench` each, taken by hand and kept in
+`docs/bench/by-hand/`:
 
-| Load of the test | Held apps got, of their speed with Spry off | Whole PC busy, off -> hold kept | Gain for the app in front |
-|---|---|---|---|
-| 16 busy processes | 7% | 100% -> 93% | 2.56x |
-| 16 busy processes, again | 16% | 100% -> 88% | 2.90x |
-| 2 busy processes | 86% | 62% -> 52% | 1.12x |
+| Version | Load of the test | Held apps got, of their speed with Spry off | Whole PC busy, off -> hold kept | Gain for the app in front |
+|---|---|---|---|---|
+| 0.6.3 | 16 busy processes | 7% | 100% -> 93% | 2.56x |
+| 0.6.3 | 16 busy processes, again | 16% | 100% -> 88% | 2.90x |
+| 0.6.3 | 2 busy processes | 86% | 62% -> 52% | 1.12x |
+| 0.6.4 | 16 busy processes | 29% | 100% -> 77% | 2.77x |
+| 0.6.4 | 16 busy processes, again | 22% | 100% -> 78% | 2.92x |
+| 0.6.4 | 2 busy processes | 58% | 81% -> 77% | 0.88x |
 
 The test holds only its own processes. The author's other jobs were not held, so they took most of
-what the held ones gave up, and the PC stayed nearly full. With Spry in Saver mode for real those
-jobs would be held as well; that has not been measured. In the last row the author's jobs moved
-during the reading, so the 10 points are not a saving to count on.
+what the held ones gave up, and the PC stayed mostly full. With Spry in Saver mode for real those
+jobs would be held as well; that has not been measured. With 0.6.4 the held processes were kept to
+2 of the 8 threads and the PC went from full to about 77% busy; before the 0.6.4 readings the
+PC was already 73 to 76% busy with the author's jobs. In both rows with 2 busy processes the
+author's jobs moved during the reading, so those points are not a saving to count on, and in the
+0.6.4 one the app in front did less work with Spry on than with it off (0.88x). That reading
+cannot say why.
 
 **Measured on a real laptop**, Spry 0.5.0 on a MacBook Pro 2019 (Intel i5-8257U, 8 threads, macOS 15.7), 19 Nov 2026.
 Four busy processes in the background that belong to no app, the app in front resting, 30 seconds
@@ -393,18 +401,23 @@ itself; "Freeze in background" stays a rule you set per app.
 
 1. Download [Spry-macos.zip](https://github.com/juw12/spry/releases/latest/download/Spry-macos.zip).
 2. Double-click the zip in Downloads, then drag **Spry** into the Applications folder.
-3. Open Spry. macOS says it could not check the app, because Spry is not signed by Apple yet:
-   choose **Done** (not "Move to Bin").
+3. Open Spry. macOS says "Spry" was not opened, because Spry is not signed by Apple yet: choose
+   **Done** (not "Move to Trash", which some Macs call "Move to Bin").
 4. Open System Settings > Privacy & Security, scroll down to Security and press **Open Anyway**
-   next to Spry. macOS asks for your password once, then opens it. The button is there for about
-   an hour after step 3. (On macOS 14 or older: hold Control, click Spry, choose **Open**.) Apple
-   describes the same steps in
+   next to Spry. macOS asks once more: press **Open Anyway** again, then type the name and
+   password of an administrator of the Mac (on your own Mac that is you). Then Spry opens. The
+   button is there for about an hour after step 3. (On macOS 14 or older: hold Control, click
+   Spry, choose **Open**.) Apple describes the same steps in
    [Open a Mac app from an unknown developer](https://support.apple.com/guide/mac-help/mh40616/mac).
 
-From then on Spry opens like any app and keeps itself up to date. Said plainly: these steps are
-written from Apple's page. After every release a test machine checks that the zip opens the way
-Finder opens it and that the app in it is whole and is the released version, but no person has
-clicked through steps 3 and 4 with this version.
+From then on Spry opens like any app and keeps itself up to date. Said plainly: on 20 Nov 2026 a
+script went through these steps on a macOS 15 test machine with the released 0.6.3 and 0.6.4
+downloads. Step 3's message, the **Open Anyway** button in Settings, the second question and the
+password window all came up as written ([pictures](docs/mac-install/)). macOS did not let the
+script press OK in the password window, so the last moment, Spry opening after the password, has
+not been seen, and no person has clicked through with this version. After every release a test
+machine also checks that the zip opens the way Finder opens it and that the app in it is whole and
+is the released version.
 
 **macOS with one line.** Open Terminal, paste this line, press Return:
 
