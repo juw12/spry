@@ -37,6 +37,29 @@ pub struct Background {
     pub rest_share_held: f64,
     pub rest_share_pulsed: Option<f64>,
     pub rest_share_lent: f64,
+    /// How busy the whole computer was while the app in front rested, in percent: with Spry
+    /// off, and with the background held as Saver mode holds it (the middle round of five).
+    /// `None` where the system did not say.
+    pub rest_busy_off: Option<f64>,
+    pub rest_busy_held: Option<f64>,
+}
+
+/// How busy the whole computer was between two looks. Its own reading, apart from the one the
+/// running Spry keeps: the Measure page runs this bench inside Spry.
+struct Meter(sysinfo::System);
+
+impl Meter {
+    fn start() -> Option<Self> {
+        let mut meter = Meter(sysinfo::System::new().ok()?);
+        meter.0.refresh_cpu_usage();
+        Some(meter)
+    }
+
+    /// Percent of the whole processor in use since the last look.
+    fn look(&mut self) -> f64 {
+        self.0.refresh_cpu_usage();
+        f64::from(self.0.global_cpu_usage())
+    }
 }
 
 #[derive(Serialize, Debug)]
@@ -241,6 +264,15 @@ impl Burners {
         let secs = t.elapsed().as_secs_f64();
         (out, (self.steps() - before) as f64 / secs)
     }
+
+    /// Their speed while `front` runs, and how busy the whole computer was meanwhile.
+    fn speed_and_busy(&self, meter: &mut Option<Meter>, front: impl FnOnce()) -> (f64, Option<f64>) {
+        if let Some(meter) = meter {
+            meter.look();
+        }
+        let speed = self.speed_during(front).1;
+        (speed, meter.as_mut().map(Meter::look))
+    }
 }
 
 impl Drop for Burners {
@@ -316,9 +348,13 @@ pub fn run(secs: f64, burners: usize) -> std::io::Result<Report> {
     const ROUNDS: usize = 5;
     let rest = || sleep(Duration::from_secs_f64(secs / 5.0));
     let (mut held, mut pulsed_rest, mut lent, mut off) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let (mut busy_held, mut busy_off) = (Vec::new(), Vec::new());
+    let mut meter = Meter::start();
     for _ in 0..ROUNDS {
         hold(&saved, Hold::Deep);
-        held.push(kids.speed_during(rest).1);
+        let (speed, busy) = kids.speed_and_busy(&mut meter, rest);
+        held.push(speed);
+        busy_held.extend(busy);
         if cfg!(unix) {
             let pulse = Pulse::new();
             pulse.set(pids.clone());
@@ -329,8 +365,14 @@ pub fn run(secs: f64, burners: usize) -> std::io::Result<Report> {
         lent.push(kids.speed_during(rest).1);
         let_go(&saved);
         sleep(Duration::from_millis(300));
-        off.push(kids.speed_during(rest).1);
+        let (speed, busy) = kids.speed_and_busy(&mut meter, rest);
+        off.push(speed);
+        busy_off.extend(busy);
     }
+    let middle = |mut values: Vec<f64>| {
+        values.sort_by(f64::total_cmp);
+        values.get(values.len() / 2).copied()
+    };
     let mean = |speeds: &[f64]| speeds.iter().sum::<f64>() / speeds.len().max(1) as f64;
     let share = |speeds: &[f64]| {
         let mut shares: Vec<f64> = speeds.iter().zip(&off).map(|(speed, alone)| speed / alone.max(0.001)).collect();
@@ -348,6 +390,8 @@ pub fn run(secs: f64, burners: usize) -> std::io::Result<Report> {
         rest_share_held: share(&held),
         rest_share_pulsed: cfg!(unix).then(|| share(&pulsed_rest)),
         rest_share_lent: share(&lent),
+        rest_busy_off: middle(busy_off),
+        rest_busy_held: middle(busy_held),
     };
     Ok(Report {
         os: std::env::consts::OS,
@@ -404,9 +448,14 @@ pub fn print(r: &Report) {
         "while the app in front works",
         100.0 * b.front_works_held / b.front_works_off.max(0.001)
     );
-    println!("  {:<46}{:>5.0}%", "while it rests, held anyway (Spry before 0.3)", 100.0 * b.rest_share_held);
+    println!("  {:<46}{:>5.0}%", "while it rests, Saver mode: still held", 100.0 * b.rest_share_held);
     if let Some(pulsed) = b.rest_share_pulsed {
-        println!("  {:<46}{:>5.0}%", "the same with pulses", 100.0 * pulsed);
+        println!("  {:<46}{:>5.0}%", "the same with pulses (Strong mode)", 100.0 * pulsed);
     }
-    println!("  {:<46}{:>5.0}%", "while it rests, now: the time is lent", 100.0 * b.rest_share_lent);
+    println!("  {:<46}{:>5.0}%", "while it rests, Performance mode: lent", 100.0 * b.rest_share_lent);
+    if let (Some(off), Some(held)) = (b.rest_busy_off, b.rest_busy_held) {
+        println!(
+            "\nThe whole computer while the app in front rests: {off:.0}% busy with Spry off, {held:.0}% in Saver mode."
+        );
+    }
 }

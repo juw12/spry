@@ -135,7 +135,6 @@ fn handle(mut request: Request, shared: &Shared) {
         "/api/autostart" if post => {
             let on = param("on").as_deref() == Some("1");
             let done = if on { install::install().map(|_| ()) } else { install::uninstall() };
-            shared.autostart.store(install::is_installed(), Ordering::Relaxed);
             match done {
                 Ok(()) => ok(),
                 Err(e) => (500, "text/plain", e.to_string()),

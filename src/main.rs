@@ -17,7 +17,7 @@ using gets the machine. Everything is put back when Spry stops.
   spry bench        measure the effect on this computer (under a minute)
   spry clean        show what storage can be cleared; add --yes to clear it
   spry install      start Spry when you sign in      (spry uninstall undoes it)
-  spry update       get the newest Spry now (Spry also looks once a day; see Settings)
+  spry update       get the newest Spry now (Spry also looks once a day; untick it under Settings)
   spry rescue       put processes back after a crash
   spry front        show the process id of the app in front (checks that Spry can see it)
   spry version

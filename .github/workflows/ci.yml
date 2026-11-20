@@ -62,6 +62,12 @@ jobs:
         if: ${{ !cancelled() && runner.os != 'macOS' }}
         shell: bash
         run: ./target/release/spry bench --secs 4 --threads 2 --json | tee "bench/${{ matrix.os }}-2threads.json"
+      # The first two measurements overload the machine (twice as many busy processes as threads).
+      # Saver mode is also for the ordinary case, a few busy apps on a machine that is not full.
+      - name: Measure again with two busy background processes only (a machine that is not overloaded)
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: ./target/release/spry bench --secs 4 --burners 2 --json | tee "bench/${{ matrix.os }}-2busy.json"
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
