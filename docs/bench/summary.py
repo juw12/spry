@@ -13,8 +13,13 @@ time kept its lower priority).
 
 v0.6/ holds runs of the 0.6.3 code. From that version on the bench also reads how busy the whole
 computer is while the app in front rests, with Spry off and with the background held the way
-Saver mode holds it. Those runs make the Saver table and nothing else: the tables above stay on
-the 0.3.1 runs, and the gain the same new runs gave the app in front is shown beside them.
+Saver mode holds it. In 0.6.3 Saver mode held apps the way the app in front needs it: on the
+threads that are not kept free.
+
+v0.6.4/ holds runs of the 0.6.4 code. From that version on Saver mode keeps held apps to about a
+quarter of the processor threads on Windows and Linux. Those runs make the Saver table and
+nothing else, with the 0.6.3 readings beside them: the tables above stay on the 0.3.1 runs, and
+the gain the same new runs gave the app in front is shown beside them.
 
     python docs/bench/summary.py          # rewrites the tables in README.md
 """
@@ -47,7 +52,7 @@ FEW = {
     "ubuntu-latest-2busy": "Linux (Ubuntu), x64",
     "ubuntu-24.04-arm-2busy": "Linux (Ubuntu), ARM64",
 }
-V01, V02, V06 = HERE / "v0.1", HERE / "v0.2", HERE / "v0.6"
+V01, V02, V06, V064 = HERE / "v0.1", HERE / "v0.2", HERE / "v0.6", HERE / "v0.6.4"
 med = statistics.median
 
 
@@ -133,7 +138,7 @@ def cost():
     runs = {name: results for name, results in load().items() if all("background" in r for r in results)}
     times = hold_back()
     lines = [
-        "| System | Front app works: held (lowest-highest) | Front app rests: still held (0.2; Saver mode today) | The same with pulses (0.2 on Linux) | Front app rests: lent (Performance mode, lowest-highest) | Hold back after (slowest) |",
+        "| System | Front app works: held (lowest-highest) | Front app rests: still held (0.2; Saver mode up to 0.6.3) | The same with pulses (0.2 on Linux) | Front app rests: lent (Performance mode, lowest-highest) | Hold back after (slowest) |",
         "|---|---|---|---|---|---|",
     ]
     lines += [cost_row(name, runs[name], times) for name in NAMES if name in runs]
@@ -162,21 +167,24 @@ def busy(results, state):
     return [r["background"][state] for r in results if r["background"].get(state) is not None]
 
 
-def saver_row(name, results, names=NAMES):
+def saver_row(name, results, before, names=NAMES):
     held = shares(results, "rest_share_held")
     off, on = busy(results, "rest_busy_off"), busy(results, "rest_busy_held")
     gain = gains(results)
+    cores, few = results[0]["cores"], results[0].get("few", 0)
     whole = f"{med(off):.0f}% -> **{med(on):.0f}%** ({min(on):.0f}-{max(on):.0f})" if off and on else "not read"
+    was_held, was_on = shares(before, "rest_share_held"), busy(before, "rest_busy_held")
+    was = f"{100 * med(was_held):.0f}%, {med(was_on):.0f}% busy" if was_held and was_on else "not measured"
     return (
-        f"| {names.get(name, name)} | {len(results)} | {results[0]['cores']} | {results[0]['burners']} | {results[0].get('kept_free', 0) or 'none'} "
+        f"| {names.get(name, name)} | {len(results)} | {cores} | {results[0]['burners']} | {f'{few} of {cores}' if few else 'all'} "
         f"| **{100 * med(held):.0f}%** ({100 * min(held):.0f}-{100 * max(held):.0f}) | {whole} "
-        f"| {med(gain):.2f}x ({min(gain):.2f}-{max(gain):.2f}) |"
+        f"| {was} | {med(gain):.2f}x ({min(gain):.2f}-{max(gain):.2f}) |"
     )
 
 
 SAVER_HEAD = [
-    "| System | Runs | Threads | Busy processes | Kept free | Work the held apps get done, Spry off = 100% (lowest-highest) | Whole computer busy, off -> Saver (lowest-highest) | Gain for the app in front in the same runs (lowest-highest) |",
-    "|---|---|---|---|---|---|---|---|",
+    "| System | Runs | Threads | Busy processes | Threads the held apps run on | Work the held apps get done, Spry off = 100% (lowest-highest) | Whole computer busy, off -> Saver (lowest-highest) | The same two on 0.6.3 | Gain for the app in front in the same runs (lowest-highest) |",
+    "|---|---|---|---|---|---|---|---|---|",
 ]
 
 
@@ -184,22 +192,24 @@ def saver():
     """Saver mode while the app in front rests: what the held apps still get done, and how busy
     the whole computer is. In Saver mode they stay held like this for as long as they are in the
     background. Two tables: the overloaded machine of the other tables, and the same machines
-    with two busy processes only."""
-    runs = load(V06)
+    with two busy processes only. Beside each row: what 0.6.3 read on the same kind of runner,
+    before held apps were kept to about a quarter of the threads."""
+    runs, old = load(V064), load(V06)
     full = [name for name in NAMES if name in runs]
     few = [name for name in FEW if name in runs]
     lines = ["**More busy processes than processor threads** (the load of the tables above):", ""]
-    lines += SAVER_HEAD + [saver_row(name, runs[name]) for name in full]
+    lines += SAVER_HEAD + [saver_row(name, runs[name], old.get(name, [])) for name in full]
     if few:
         lines += ["", "**Two busy processes only**, so with processor to spare:", ""]
-        lines += SAVER_HEAD + [saver_row(name, runs[name], FEW) for name in few]
+        lines += SAVER_HEAD + [saver_row(name, runs[name], old.get(name, []), FEW) for name in few]
     lines.append("")
-    count = lambda names: sorted({len(runs[name]) for name in names})
+    count = lambda names, kept=runs: sorted({len(kept[name]) for name in names if name in kept})
     spread = lambda counts: str(counts[0]) if len(counts) == 1 else f"{counts[0]} to {counts[-1]}"
     lines.append(
-        f"Each row is the median over its CI runs of the 0.6.3 code ({run_links(V06)}). "
-        f"The first table has {spread(count(full))} runs per row"
-        + (f", the second {spread(count(few))}: the two-process test was added to CI after the first runs." if few else ".")
+        f"Each row is the median over its CI runs of the 0.6.4 code ({run_links(V064)}): "
+        f"{spread(count(full + few))} runs per row. "
+        f"The 0.6.3 column is the median over the runs of the 0.6.3 code ({run_links(V06)}): "
+        f"{spread(count(full, old))} runs per row in the first table, {spread(count(few, old))} in the second."
     )
     return "\n".join(lines)
 
