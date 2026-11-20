@@ -1,0 +1,37 @@
+{
+  "os": "windows",
+  "cores": 2,
+  "burners": 4,
+  "kept_free": 1,
+  "secs": 4.0,
+  "quiet": {
+    "work": 257.3677001337462,
+    "p50_ms": 3.8836,
+    "p95_ms": 3.9692
+  },
+  "busy": {
+    "work": 118.66278562218665,
+    "p50_ms": 4.222700000000001,
+    "p95_ms": 4.3064
+  },
+  "eased": {
+    "work": 236.79131581337364,
+    "p50_ms": 3.8757,
+    "p95_ms": 3.8971999999999998
+  },
+  "pulsed": null,
+  "background": {
+    "front_works_off": 467.6383465322222,
+    "front_works_held": 223.72296693245283,
+    "front_rests_off": 522.8886300547746,
+    "front_rests_held": 259.3440220607384,
+    "front_rests_pulsed": null,
+    "front_rests_lent": 521.9672179719898,
+    "rest_share_held": 0.49588227448635813,
+    "rest_share_pulsed": null,
+    "rest_share_lent": 0.9969029261613412,
+    "rest_busy_off": 50.39133071899414,
+    "rest_busy_held": 25.775657653808594
+  },
+  "ease_text": "lower priority; under pressure also Efficiency mode, low memory priority and part of the processor kept free"
+}

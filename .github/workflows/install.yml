@@ -71,6 +71,33 @@ jobs:
           sleep 2
           ! pgrep -x spry
           "$HOME/.local/bin/spry" rescue
+      # The other way the README gives on a Mac: Spry-macos.zip from the browser, no Terminal.
+      # A test machine cannot press "Open Anyway", so this checks what needs no person: the zip
+      # is the file the release page names, opens the way Finder opens it, and the app in it is
+      # whole, signed (ad hoc, not by Apple) for both kinds of Mac, and is the released version.
+      # The last line prints what macOS says about an app that came through a browser.
+      - name: The Mac app from the browser download is whole
+        if: runner.os == 'macOS'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir browser && cd browser
+          if ! gh release download -R juw12/spry --pattern 'Spry-macos.zip' --pattern 'Spry-macos.zip.sha256'; then
+            echo "This release is from before 0.4 and has no Mac app."
+            exit 0
+          fi
+          test "$(shasum -a 256 Spry-macos.zip | cut -d' ' -f1)" = "$(cut -d' ' -f1 Spry-macos.zip.sha256)"
+          ditto -x -k Spry-macos.zip .
+          codesign --verify --deep --strict --verbose=2 Spry.app
+          lipo -archs Spry.app/Contents/MacOS/spry
+          lipo -archs Spry.app/Contents/MacOS/spry | grep -q x86_64
+          lipo -archs Spry.app/Contents/MacOS/spry | grep -q arm64
+          want="$("$HOME/.local/bin/spry" version)"
+          got="$(Spry.app/Contents/MacOS/spry version)"
+          echo "the app in the zip says: $got"
+          test "$got" = "$want"
+          xattr -r -w com.apple.quarantine "0083;$(printf '%x' "$(date +%s)");Safari;" Spry.app
+          spctl --assess --type execute --verbose=4 Spry.app || echo "macOS asks before the first start, as the README says"
       - name: Each download was built by this repository's release workflow
         if: matrix.os == 'ubuntu-latest'
         env:
