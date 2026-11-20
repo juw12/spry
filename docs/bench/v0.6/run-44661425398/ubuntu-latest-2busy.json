@@ -1,0 +1,41 @@
+{
+  "os": "linux",
+  "cores": 4,
+  "burners": 2,
+  "kept_free": 2,
+  "secs": 4.0,
+  "quiet": {
+    "work": 250.07414348949476,
+    "p50_ms": 4.194679,
+    "p95_ms": 4.297681
+  },
+  "busy": {
+    "work": 249.6173226657833,
+    "p50_ms": 4.025283,
+    "p95_ms": 4.043506
+  },
+  "eased": {
+    "work": 249.89881546981863,
+    "p50_ms": 4.119578,
+    "p95_ms": 4.283394
+  },
+  "pulsed": {
+    "work": 249.92069279151679,
+    "p50_ms": 4.160499,
+    "p95_ms": 4.286285
+  },
+  "background": {
+    "front_works_off": 440.50444533989656,
+    "front_works_held": 454.65382689704495,
+    "front_rests_off": 459.2084845691197,
+    "front_rests_held": 455.453660062003,
+    "front_rests_pulsed": 181.72736298110007,
+    "front_rests_lent": 459.45671881371226,
+    "rest_share_held": 0.991825861012561,
+    "rest_share_pulsed": 0.3967376244537944,
+    "rest_share_lent": 0.9999981339241981,
+    "rest_busy_off": 50.31446838378906,
+    "rest_busy_held": 50.3125
+  },
+  "ease_text": "idle disk priority; under pressure part of the processor is kept free, plus short pause-and-resume pulses"
+}

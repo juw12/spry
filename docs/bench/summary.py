@@ -11,6 +11,11 @@ reactions timed from a timer), v0.2/ (0.2.0: apps were held whatever the app in 
 pulses were the default on Linux) and v0.3.0/ (0.3.0: on Windows a process that was lent the
 time kept its lower priority).
 
+v0.6/ holds runs of the 0.6.3 code. From that version on the bench also reads how busy the whole
+computer is while the app in front rests, with Spry off and with the background held the way
+Saver mode holds it. Those runs make the Saver table and nothing else: the tables above stay on
+the 0.3.1 runs, and the gain the same new runs gave the app in front is shown beside them.
+
     python docs/bench/summary.py          # rewrites the tables in README.md
 """
 import json
@@ -22,6 +27,7 @@ README = HERE.parent.parent / "README.md"
 START, END = "<!-- bench:start -->", "<!-- bench:end -->"
 COST_START, COST_END = "<!-- bench-cost:start -->", "<!-- bench-cost:end -->"
 CHANGE_START, CHANGE_END = "<!-- bench-change:start -->", "<!-- bench-change:end -->"
+SAVER_START, SAVER_END = "<!-- bench-saver:start -->", "<!-- bench-saver:end -->"
 NAMES = {
     "windows-latest": "Windows, x64",
     "macos-15": "macOS 15, Apple silicon",
@@ -32,7 +38,16 @@ NAMES = {
     "ubuntu-24.04-arm": "Linux (Ubuntu), ARM64",
     "ubuntu-24.04-arm-2threads": "Linux (Ubuntu), ARM64, on 2 threads only",
 }
-V01, V02 = HERE / "v0.1", HERE / "v0.2"
+# The same machines with two busy background processes only, so with processor to spare.
+# Measured from 0.6.3 on; these rows are in the Saver table and nowhere else.
+FEW = {
+    "windows-latest-2busy": "Windows, x64",
+    "macos-15-2busy": "macOS 15, Apple silicon",
+    "macos-15-intel-2busy": "macOS 15, Intel",
+    "ubuntu-latest-2busy": "Linux (Ubuntu), x64",
+    "ubuntu-24.04-arm-2busy": "Linux (Ubuntu), ARM64",
+}
+V01, V02, V06 = HERE / "v0.1", HERE / "v0.2", HERE / "v0.6"
 med = statistics.median
 
 
@@ -75,8 +90,8 @@ def row(name, results):
     )
 
 
-def run_links():
-    ids = sorted({p.parent.name.removeprefix("run-") for p in HERE.glob("run-*/*.json")})
+def run_links(folder=HERE):
+    ids = sorted({p.parent.name.removeprefix("run-") for p in folder.glob("run-*/*.json")})
     return ", ".join(f"[{i}](https://github.com/juw12/spry/actions/runs/{i})" for i in ids)
 
 
@@ -118,7 +133,7 @@ def cost():
     runs = {name: results for name, results in load().items() if all("background" in r for r in results)}
     times = hold_back()
     lines = [
-        "| System | Front app works: held (lowest-highest) | Front app rests: held anyway (0.2) | The same with pulses (0.2 on Linux) | Front app rests: lent (now, lowest-highest) | Hold back after (slowest) |",
+        "| System | Front app works: held (lowest-highest) | Front app rests: still held (0.2; Saver mode today) | The same with pulses (0.2 on Linux) | Front app rests: lent (Performance mode, lowest-highest) | Hold back after (slowest) |",
         "|---|---|---|---|---|---|",
     ]
     lines += [cost_row(name, runs[name], times) for name in NAMES if name in runs]
@@ -142,6 +157,53 @@ def change():
     return "\n".join(lines)
 
 
+def busy(results, state):
+    """Percent of the whole computer in use while the app in front rested, per run."""
+    return [r["background"][state] for r in results if r["background"].get(state) is not None]
+
+
+def saver_row(name, results, names=NAMES):
+    held = shares(results, "rest_share_held")
+    off, on = busy(results, "rest_busy_off"), busy(results, "rest_busy_held")
+    gain = gains(results)
+    whole = f"{med(off):.0f}% -> **{med(on):.0f}%** ({min(on):.0f}-{max(on):.0f})" if off and on else "not read"
+    return (
+        f"| {names.get(name, name)} | {len(results)} | {results[0]['cores']} | {results[0]['burners']} | {results[0].get('kept_free', 0) or 'none'} "
+        f"| **{100 * med(held):.0f}%** ({100 * min(held):.0f}-{100 * max(held):.0f}) | {whole} "
+        f"| {med(gain):.2f}x ({min(gain):.2f}-{max(gain):.2f}) |"
+    )
+
+
+SAVER_HEAD = [
+    "| System | Runs | Threads | Busy processes | Kept free | Work the held apps get done, Spry off = 100% (lowest-highest) | Whole computer busy, off -> Saver (lowest-highest) | Gain for the app in front in the same runs (lowest-highest) |",
+    "|---|---|---|---|---|---|---|---|",
+]
+
+
+def saver():
+    """Saver mode while the app in front rests: what the held apps still get done, and how busy
+    the whole computer is. In Saver mode they stay held like this for as long as they are in the
+    background. Two tables: the overloaded machine of the other tables, and the same machines
+    with two busy processes only."""
+    runs = load(V06)
+    full = [name for name in NAMES if name in runs]
+    few = [name for name in FEW if name in runs]
+    lines = ["**More busy processes than processor threads** (the load of the tables above):", ""]
+    lines += SAVER_HEAD + [saver_row(name, runs[name]) for name in full]
+    if few:
+        lines += ["", "**Two busy processes only**, so with processor to spare:", ""]
+        lines += SAVER_HEAD + [saver_row(name, runs[name], FEW) for name in few]
+    lines.append("")
+    count = lambda names: sorted({len(runs[name]) for name in names})
+    spread = lambda counts: str(counts[0]) if len(counts) == 1 else f"{counts[0]} to {counts[-1]}"
+    lines.append(
+        f"Each row is the median over its CI runs of the 0.6.3 code ({run_links(V06)}). "
+        f"The first table has {spread(count(full))} runs per row"
+        + (f", the second {spread(count(few))}: the two-process test was added to CI after the first runs." if few else ".")
+    )
+    return "\n".join(lines)
+
+
 def between(text, start, end, body):
     head, rest = text.split(start, 1)
     _, tail = rest.split(end, 1)
@@ -150,7 +212,8 @@ def between(text, start, end, body):
 
 if __name__ == "__main__":
     text = README.read_text(encoding="utf-8")
-    for start, end, build in [(START, END, table), (COST_START, COST_END, cost), (CHANGE_START, CHANGE_END, change)]:
+    tables = [(START, END, table), (COST_START, COST_END, cost), (CHANGE_START, CHANGE_END, change), (SAVER_START, SAVER_END, saver)]
+    for start, end, build in tables:
         if start in text:
             text = between(text, start, end, build())
         print(build(), "\n")

@@ -1,0 +1,41 @@
+{
+  "os": "macos",
+  "cores": 4,
+  "burners": 2,
+  "kept_free": 0,
+  "secs": 4.0,
+  "quiet": {
+    "work": 225.04080143166865,
+    "p50_ms": 4.277708,
+    "p95_ms": 4.851521999999999
+  },
+  "busy": {
+    "work": 135.39465617880015,
+    "p50_ms": 4.087596,
+    "p95_ms": 6.0053279999999996
+  },
+  "eased": {
+    "work": 209.33778739328466,
+    "p50_ms": 4.145984,
+    "p95_ms": 4.31565
+  },
+  "pulsed": {
+    "work": 241.25280549977998,
+    "p50_ms": 4.182187000000001,
+    "p95_ms": 4.298883
+  },
+  "background": {
+    "front_works_off": 370.2006272526647,
+    "front_works_held": 207.26440600080002,
+    "front_rests_off": 474.78906211176854,
+    "front_rests_held": 351.23573449632323,
+    "front_rests_pulsed": 124.63085747952633,
+    "front_rests_lent": 461.91076578357513,
+    "rest_share_held": 0.6783104432951674,
+    "rest_share_pulsed": 0.22116643768411073,
+    "rest_share_lent": 0.9249740414263158,
+    "rest_busy_off": 100.0,
+    "rest_busy_held": 95.82681274414062
+  },
+  "ease_text": "macOS background state: lowest CPU priority and throttled disk access"
+}
