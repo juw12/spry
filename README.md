@@ -363,6 +363,10 @@ What you should know about it:
 - Tested on every change on all five systems with a folder standing in for the release page, and
   after every release against the real release page (see [Safety](#safety)). Not yet tried: a Mac
   on which Spry was started by "Start Spry when I sign in".
+- 0.6.0, the first version that updates itself, did not come back after an update when its window
+  was open or had been open a moment before: the check against the real release page found that on
+  Windows and macOS within minutes of the release, and 0.6.1 fixes it. If you have 0.6.0, start
+  Spry again by hand after it has updated; from 0.6.1 on it comes back by itself.
 
 ## How it works
 

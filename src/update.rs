@@ -285,6 +285,22 @@ pub fn restart(shared: &Shared) {
     shared.quit.store(true, Ordering::Relaxed);
 }
 
+/// What the next Spry is started with. The command comes first and by name: 0.6.0 left it out
+/// when the window was open, the next Spry took the flag for a command it did not know, printed
+/// the help and ended, so after an update Spry was gone.
+fn again(show: bool, tray: bool) -> Vec<&'static str> {
+    let mut args = vec!["run"];
+    if show {
+        args.push("--show");
+    }
+    if !tray {
+        args.push("--no-tray");
+    }
+    // This Spry still holds the port for a moment; the next one is told to wait for it.
+    args.push("--after-update");
+    args
+}
+
 /// The last thing a quitting Spry does: when a restart was asked for, it starts the program
 /// at its place, which is the new version after an update.
 pub fn relaunch(shared: &Shared, tray: bool) {
@@ -294,14 +310,8 @@ pub fn relaunch(shared: &Shared, tray: bool) {
     // With its window open a moment ago Spry comes back with the window; otherwise quietly.
     let watched = shared.watched.lock().unwrap().is_some_and(|at| at.elapsed() < Duration::from_secs(10));
     let mut next = platform::command(exe());
-    if !(watched && shared.window.load(Ordering::Relaxed)) {
-        next.arg("run");
-    }
-    if !tray {
-        next.arg("--no-tray");
-    }
-    // This Spry still holds the port for a moment; the next one is told to wait for it.
-    next.arg("--after-update").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    next.args(again(watched && shared.window.load(Ordering::Relaxed), tray));
+    next.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
@@ -352,6 +362,14 @@ mod tests {
         for odd in ["", "latest", "0.7.0-rc1", "+1.0.0", "1..0", "0.7.0/../x", "1.2.3.4.5"] {
             assert!(!newer(odd, "0.6.0"), "{odd:?} must not count as a newer version");
         }
+    }
+
+    #[test]
+    fn the_next_spry_is_always_started_with_the_run_command() {
+        assert_eq!(again(false, true), ["run", "--after-update"]);
+        assert_eq!(again(true, true), ["run", "--show", "--after-update"]);
+        assert_eq!(again(false, false), ["run", "--no-tray", "--after-update"]);
+        assert_eq!(again(true, false), ["run", "--show", "--no-tray", "--after-update"]);
     }
 
     #[test]

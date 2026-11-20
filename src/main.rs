@@ -32,7 +32,8 @@ fn main() {
 
     match args.first().map(String::as_str).unwrap_or("") {
         "" => start(true, !has("--no-tray"), has("--after-update")),
-        "run" => start(false, !has("--no-tray"), has("--after-update")),
+        // `--show`: with its window, as it was before an update (update.rs).
+        "run" => start(has("--show"), !has("--no-tray"), has("--after-update")),
         "update" => update_now(),
         "open" => {
             if !open_page() {
