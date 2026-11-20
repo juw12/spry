@@ -15,7 +15,8 @@ holds the busy apps behind it back. It has two modes:
 When you switch apps, it switches with you. When Spry stops, everything is exactly as it was.
 
 One small program for **Windows, macOS and Linux**. Free and open source (MIT). No account, no
-internet connection needed, no administrator rights.
+administrator rights. It works without an internet connection; with one, it keeps itself up to date
+(see [Updates](#updates)).
 
 ![Spry's window: what is held back right now](docs/dashboard.png)
 
@@ -326,6 +327,43 @@ This shows the file was built from this repository's source by its release workf
 changed afterwards. It is not the same as a signature from Microsoft's or Apple's programmes, so the
 first-start warnings on Windows and macOS remain.
 
+## Updates
+
+Spry keeps itself up to date. Half a minute after it starts, and then once a day, it asks GitHub
+which release is the newest. When that one is newer than the Spry that is running, Spry:
+
+1. downloads the file for your system from the release page into a folder next to itself;
+2. compares it with the SHA-256 checksum published next to it;
+3. starts the downloaded program once and checks that it answers with the announced version;
+4. puts it in the place of the one that is there (on a Mac: the whole Spry.app);
+5. quits the usual way, so every app is put back, and starts again as the new version. If its
+   window was open, it opens again.
+
+When a step fails nothing is replaced: the Spry that is there keeps running, and its page says what
+went wrong, with a button to try again.
+
+- **To decide yourself**, untick **Update Spry automatically** under Settings. Spry then only says
+  on its page that a newer version is out, with an **Update now** button.
+- **From a terminal:** `spry update` does it now.
+- **Never look:** start Spry with the environment variable `SPRY_UPDATE_FROM` set to nothing. Set to
+  an address, Spry looks there instead of GitHub (a folder with `latest.json` and the downloads).
+
+What you should know about it:
+
+- The daily look is one request to `api.github.com`. Like every request it shows GitHub your
+  internet address. Nothing about you, your computer or your apps is in it, and Spry makes no other
+  connection.
+- The checksum shows that the download arrived whole and is the file on the release page. It is
+  the same check the install lines make. Spry does not check the build record (see "Check a
+  download" above) by itself, so it trusts the release page of this repository.
+- It uses the `curl` and `tar` that come with the system (on Windows: since Windows 10 of 2018).
+  Where they are missing, or where Spry may not write to its own folder, it only tells you.
+- A Spry that updated itself restarts on its own, once per release. Apps that were held run at
+  full speed for the second or two in between.
+- Tested on every change on all five systems with a folder standing in for the release page, and
+  after every release against the real release page (see [Safety](#safety)). Not yet tried: a Mac
+  on which Spry was started by "Start Spry when I sign in".
+
 ## How it works
 
 Every half second Spry asks the system which app is in front. Every two seconds (every five while
@@ -374,6 +412,9 @@ What "eased" means on each system:
   sound, call, music and recording apps. Apps that come with the system, such as Photos or Safari,
   count as apps.
 - The page is served on `127.0.0.1` only and needs a secret token that is created on your computer.
+- A newer Spry replaces the one that is there only when the download matches its published
+  checksum and answers with the announced version. Otherwise nothing is changed (see
+  [Updates](#updates)).
 - Storage cleaning shows what it found and removes nothing until you choose. It only looks at
   caches, temporary files and the bin, never at documents, downloads or app data.
 
@@ -383,8 +424,8 @@ paused, frozen, kept off part of the processor, and put back; Spry is killed and
 the process back; on Linux, a process that picks its own processor threads while held keeps them.
 A second check ([install](https://github.com/juw12/spry/actions/workflows/install.yml)) runs the
 install steps from this page on each system, confirms the installed Spry starts and answers, feeds
-the installer a changed download and confirms it is refused, and verifies the build record of every
-download.
+the installer a changed download and confirms it is refused, has the installed Spry update itself
+from the release page and start again, and verifies the build record of every download.
 
 Each promise above has a test with a name you can read, run on every change:
 
@@ -397,6 +438,7 @@ Each promise above has a test with a name you can read, run on every change:
 | The app in front is never touched | `busy_background_is_eased_and_the_front_app_is_not`, `focus_on_a_child_window_covers_the_whole_app` in [src/policy.rs](https://github.com/juw12/spry/blob/main/src/policy.rs) |
 | System programs and the "never touched" list are skipped | `programs_that_belong_to_the_system_are_recognised_by_where_they_live` in [src/config.rs](https://github.com/juw12/spry/blob/main/src/config.rs), `never_slow_and_protected_are_left_alone` in [src/policy.rs](https://github.com/juw12/spry/blob/main/src/policy.rs) |
 | The page answers only with the token | `eases_shows_restores_and_rescues` (asks without and with a wrong token) in [tests/end_to_end.rs](https://github.com/juw12/spry/blob/main/tests/end_to_end.rs) |
+| An update replaces Spry only with a download that matches its checksum and is the announced version | `an_older_spry_replaces_itself_with_the_newer_download_and_starts_again`, `on_a_mac_the_whole_app_is_replaced`, `a_download_that_is_changed_or_not_the_announced_version_changes_nothing` in [tests/update.rs](https://github.com/juw12/spry/blob/main/tests/update.rs), `a_higher_version_is_newer_and_anything_odd_is_not` in [src/update.rs](https://github.com/juw12/spry/blob/main/src/update.rs) |
 | Storage: looking removes nothing, and only caches, temporary files and the bin are looked at | `sweep_removes_only_old_files_and_keeps_the_root`, `only_folders_well_inside_home_or_temp_are_accepted`, `no_cleaning_folder_is_inside_your_own_files` in [src/clean.rs](https://github.com/juw12/spry/blob/main/src/clean.rs) |
 
 What went wrong along the way, so you can judge the testing. The largest fault got past every
@@ -440,6 +482,7 @@ spry status       show what is being held back right now
 spry bench        measure the effect on this computer (under a minute)
 spry clean        show what storage can be cleared; add --yes to clear it
 spry install      start Spry when you sign in      (spry uninstall undoes it)
+spry update       get the newest Spry now (Spry also looks once a day; see Updates)
 spry rescue       put processes back after a crash
 spry front        show the process id of the app in front (checks that Spry can see it)
 ```

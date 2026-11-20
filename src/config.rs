@@ -39,6 +39,8 @@ pub struct Config {
     /// While the app in front rests, held apps run at full speed.
     pub lend: bool,
     pub trim_memory: bool,
+    /// A newer Spry is put in by itself (update.rs). Off, Spry only says that there is one.
+    pub auto_update: bool,
     pub freeze_after_secs: u64,
     pub never_slow: Vec<String>,
     pub always_slow: Vec<String>,
@@ -58,6 +60,7 @@ impl Default for Config {
             strong: false,
             lend: true,
             trim_memory: true,
+            auto_update: true,
             freeze_after_secs: 30,
             never_slow: vec![],
             always_slow: vec![],

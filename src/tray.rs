@@ -87,6 +87,7 @@ pub fn run(shared: Arc<Shared>, worker: JoinHandle<()>, show: bool) -> ! {
                 if let Some(w) = worker.take() {
                     let _ = w.join();
                 }
+                crate::update::relaunch(&shared, true);
                 return;
             }
             _ => {}
