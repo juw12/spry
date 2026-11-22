@@ -39,6 +39,13 @@ pub struct Config {
     /// While the app in front rests, held apps run at full speed.
     pub lend: bool,
     pub trim_memory: bool,
+    /// Keep the whole computer under a load limit (limit.rs): once the processor's average use
+    /// over `limit_minutes` reaches `limit_cpu`, busy apps are held until it has rested.
+    pub limit: bool,
+    /// That average, in percent of the whole processor.
+    pub limit_cpu: f32,
+    /// The stretch the average is taken over, in minutes.
+    pub limit_minutes: u64,
     /// A newer Spry is put in by itself (update.rs). Off, Spry only says that there is one.
     pub auto_update: bool,
     pub freeze_after_secs: u64,
@@ -60,6 +67,11 @@ impl Default for Config {
             strong: false,
             lend: true,
             trim_memory: true,
+            // An hour at three quarters of the processor is work no short job needs, and what
+            // days of it do to a laptop is why the limit is on unless switched off.
+            limit: true,
+            limit_cpu: 75.0,
+            limit_minutes: 60,
             auto_update: true,
             freeze_after_secs: 30,
             never_slow: vec![],
@@ -76,6 +88,8 @@ impl Config {
         self.pressure_cpu = self.pressure_cpu.clamp(30.0, 99.0);
         self.pressure_mem_free = self.pressure_mem_free.clamp(2.0, 60.0);
         self.freeze_after_secs = self.freeze_after_secs.clamp(5, 3600);
+        self.limit_cpu = self.limit_cpu.clamp(30.0, 100.0);
+        self.limit_minutes = self.limit_minutes.clamp(10, crate::limit::MAX_MINUTES);
         let tidy = |v: &mut Vec<String>| {
             let mut out: Vec<String> = Vec::new();
             for n in v.iter().map(|s| norm(s)).filter(|s| !s.is_empty() && !is_protected(s)) {
@@ -390,6 +404,8 @@ mod tests {
     fn sanitize_keeps_a_name_in_one_list_and_drops_protected() {
         let c = Config {
             hog_percent: 0.0,
+            limit_cpu: 750.0,
+            limit_minutes: 1,
             never_slow: vec!["Code.exe".into(), "code".into()],
             freeze: vec!["code".into(), "chrome".into(), "explorer".into()],
             always_slow: vec!["chrome".into(), "ollama".into()],
@@ -397,6 +413,7 @@ mod tests {
         }
         .sanitize();
         assert_eq!(c.hog_percent, 1.0);
+        assert_eq!((c.limit_cpu, c.limit_minutes), (100.0, 10), "a slip in the number is not \"no limit\"");
         assert_eq!(c.never_slow, vec!["code"]);
         assert_eq!(c.freeze, vec!["chrome"]);
         assert_eq!(c.always_slow, vec!["ollama"]);

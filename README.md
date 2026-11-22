@@ -370,6 +370,52 @@ Pausing a process did not give memory back on that Mac: a paused process that he
 held 604 MB a minute later (43% of memory was free). That is why Saver mode does not pause apps by
 itself; "Freeze in background" stays a rule you set per app.
 
+## The load limit
+
+New in 0.7.0, on unless you switch it off (Settings, **Load limit**).
+
+Why it is there: a laptop ran several AI assistants for 100 hours at about 80% of its processor.
+At no moment was it under pressure for long, so nothing ever held anything back, and it never
+rested either. Then its drive dropped out in the middle of the work. A moment at 100% does a
+computer no harm. Days at 80% are what make the heat.
+
+So Spry keeps the processor's average use, minute by minute, over the last hour. When that average
+reaches the limit (75% unless you change it), the computer is over its limit, and until it has
+rested Spry does this, whichever mode it is in:
+
+- nothing is lent: busy apps in the background stay held, also while the app in front rests;
+- they are held the deeper way and, on Windows and Linux, kept to about a quarter of the processor
+  threads, as in Saver mode;
+- those that use half a processor core or more are also paused in short pulses (120 ms paused,
+  80 ms running). A lower priority alone takes no work away while nothing else wants the
+  processor; a pulse does;
+- with the screen locked or nobody at the computer, where no app is in front, busy apps are held
+  as well. That is when nobody is there to notice how hard it works. Without an app in front they
+  are only eased, never paused.
+
+It counts as rested once the average is 5 points under the limit (70% for a limit of 75%). The
+page says **Over its load limit** while it lasts, and Settings shows the average it is judged by.
+The limit (30 to 100%) and the stretch (10 to 240 minutes) can be changed there, or in
+`config.json` as `limit`, `limit_cpu` and `limit_minutes`.
+
+What it does not do, so nobody counts on it:
+
+- Spry reads no temperature. It limits the work that makes the heat.
+- The app in front and everything it started is never held. If that app is what keeps the
+  processor busy (a game, a render you are watching), the computer stays over its limit and only
+  the background is held.
+- "Never slow" rules still win, and system programs are never touched, as everywhere in Spry.
+- It is not judged before 45 of the 60 minutes have been seen, and a computer that slept or was
+  off starts fresh.
+- What the hold saves depends on the system and the load. On the office PC it was written for,
+  Saver's hold alone took 16 busy processes from 100% of the processor to about 77% (see
+  [Saver and Performance](#saver-and-performance)); the pulses come on top. How far the limit
+  brings a computer down, and how much cooler that leaves it, has not been measured yet.
+
+The rule itself is tested on every system by CI (`limit::tests` and the `over_its_limit_*` tests
+of the policy): an hour at 80% is over, a busy quarter of an hour is not, and the holds are the
+ones listed above. It has not run for an hour on a real computer yet.
+
 ## What it cannot do
 
 - It does not add memory or make the processor faster. It decides who goes first. Work in the

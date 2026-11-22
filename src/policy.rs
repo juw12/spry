@@ -35,6 +35,9 @@ pub struct Snapshot {
     pub mem_free_pct: f32,
     pub mem_total: u64,
     pub self_pid: u32,
+    /// Where the whole computer stands against its load limit (limit.rs). `over` is only set
+    /// while the limit is switched on.
+    pub limit: crate::limit::View,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize)]
@@ -90,7 +93,10 @@ pub struct Plan {
     /// Machine is under CPU pressure: use the deeper form of easing.
     pub deep: bool,
     /// Saver mode: the deeper form all the time, and on a few processor threads only.
+    /// Also set, in any mode, while the computer is over its load limit.
     pub saver: bool,
+    /// The computer is over its load limit: busy apps are held until it has rested.
+    pub over: bool,
 }
 
 /// An app you just left keeps full speed this long.
@@ -200,6 +206,12 @@ pub fn rule_for_name(cfg: &Config, name: &str) -> Rule {
 }
 
 pub fn decide(cfg: &Config, snap: &Snapshot, st: &mut PolicyState, now: Instant) -> Plan {
+    // Over its load limit the whole computer has worked too hard for too long (limit.rs). Until
+    // it has rested, Spry does what Saver mode does, whatever mode it is in: nothing is lent and
+    // held apps keep to a few processor threads. The busiest are also paused in short pulses,
+    // because a lower priority alone takes no work away while nothing else wants the processor.
+    let over = snap.limit.over;
+
     // CPU pressure, with a delay both ways so short spikes change nothing.
     if snap.cpu_total >= cfg.pressure_cpu {
         st.calm_since = None;
@@ -211,11 +223,15 @@ pub fn decide(cfg: &Config, snap: &Snapshot, st: &mut PolicyState, now: Instant)
         if snap.cpu_total < cfg.pressure_cpu - 15.0 {
             if now.duration_since(*st.calm_since.get_or_insert(now)) >= PRESSURE_OFF {
                 st.pressure = false;
-                st.pulsed.clear();
             }
         } else {
             st.calm_since = None;
         }
+    }
+    // A pulsed process measures lower because it is pulsed, so it stays pulsed for as long as
+    // the reason lasts: pressure, or the load limit.
+    if !over && !st.pressure {
+        st.pulsed.clear();
     }
 
     let tree = Tree::new(&snap.procs);
@@ -246,10 +262,14 @@ pub fn decide(cfg: &Config, snap: &Snapshot, st: &mut PolicyState, now: Instant)
     }
     // Saver mode is there to use less: nothing is lent, the deeper hold is used all the time,
     // and held apps keep to a few processor threads.
-    let saver = cfg.mode == Mode::Saver;
+    let saver = cfg.mode == Mode::Saver || over;
     let lend = !saver && cfg.lend && rests && now.duration_since(*st.rest_since.get_or_insert(now)) >= LEND_AFTER;
+    // Over the limit, busy apps are held also where no app is in front (a locked screen, a
+    // computer left to work alone): that is when nobody is there to notice how hard it works.
+    // Without a known front app they are only eased, never paused.
+    let known = fg_known || over;
 
-    let mut plan = Plan { family, deep: st.pressure || saver, saver, ..Plan::default() };
+    let mut plan = Plan { family, deep: st.pressure || saver, saver, over, ..Plan::default() };
 
     for p in &snap.procs {
         if !p.mine || p.pid <= 1 || plan.family.contains(&p.pid) || own.contains(&p.pid) {
@@ -277,10 +297,11 @@ pub fn decide(cfg: &Config, snap: &Snapshot, st: &mut PolicyState, now: Instant)
             continue;
         }
 
-        let busy = fg_known && p.cpu >= cfg.hog_percent && !just_left;
-        if rule == Rule::Always || busy || (fg_known && st.sticky.contains(&p.pid)) {
+        let busy = known && p.cpu >= cfg.hog_percent && !just_left;
+        if rule == Rule::Always || busy || (known && st.sticky.contains(&p.pid)) {
             st.sticky.insert(p.pid);
-            let pulse = cfg.strong && st.pressure && (p.cpu >= PULSE_CPU || st.pulsed.contains(&p.pid));
+            let pulses = (cfg.strong && st.pressure) || (over && fg_known);
+            let pulse = pulses && (p.cpu >= PULSE_CPU || st.pulsed.contains(&p.pid));
             if pulse {
                 st.pulsed.insert(p.pid);
             }
@@ -344,7 +365,15 @@ mod tests {
             mem_free_pct: 50.0,
             mem_total: 8 << 30,
             self_pid: 40,
+            limit: crate::limit::View::default(),
         }
+    }
+
+    /// The same desk on a computer that is over its load limit.
+    fn over_limit(fg: Option<u32>) -> Snapshot {
+        let mut snap = desk(fg);
+        snap.limit.over = true;
+        snap
     }
 
     /// The settings of a Spry from before there were modes: the app in front first.
@@ -483,6 +512,68 @@ mod tests {
         assert_eq!(frozen.levels.get(&31), Some(&Level::Freeze));
         let thawed = decide(&cfg, &desk(Some(31)), &mut st, t0 + Duration::from_secs(32));
         assert!(!thawed.levels.contains_key(&30) && !thawed.levels.contains_key(&31));
+    }
+
+    #[test]
+    fn over_its_limit_performance_mode_holds_like_saver_and_lends_nothing() {
+        let cfg = performance();
+        let mut snap = over_limit(Some(20));
+        snap.procs[1].cpu_now = 0.0; // the app in front rests...
+        snap.procs[2].cpu_now = 0.0;
+        let t = Instant::now();
+        let mut st = PolicyState::default();
+        for secs in [0, 1, 8, 600] {
+            let plan = decide(&cfg, &snap, &mut st, t + Duration::from_secs(secs));
+            assert!(plan.over && plan.deep && plan.saver, "the deeper hold on a few threads");
+            assert_eq!(plan.levels.get(&31), Some(&Level::Pulse), "after {secs} s: the busiest is pulsed, not lent");
+            assert!(!plan.levels.contains_key(&20) && !plan.levels.contains_key(&21), "never the app in front");
+            assert!(!plan.levels.contains_key(&30), "a quiet process is left alone");
+        }
+        // Pulsed, the tab measures lower, and stays pulsed until the computer has rested.
+        snap.procs[4].cpu = 30.0;
+        assert_eq!(decide(&cfg, &snap, &mut st, t + Duration::from_secs(601)).levels.get(&31), Some(&Level::Pulse));
+        // Rested: Performance mode is back. The pulses stop at once, and after the usual six
+        // seconds of rest the idle time of the app in front is lent again.
+        snap.limit.over = false;
+        let rested = decide(&cfg, &snap, &mut st, t + Duration::from_secs(602));
+        assert!(!rested.over && !rested.saver && !rested.deep);
+        assert_eq!(rested.levels.get(&31), Some(&Level::Ease));
+        assert_eq!(
+            decide(&cfg, &snap, &mut st, t + Duration::from_secs(609)).levels.get(&31),
+            Some(&Level::Lent)
+        );
+    }
+
+    #[test]
+    fn over_its_limit_busy_apps_are_held_with_nobody_at_the_computer() {
+        // A locked screen: no app is in front. Under its limit Spry then holds nothing.
+        let cfg = performance();
+        assert!(run(&cfg, &desk(None)).levels.is_empty());
+        let snap = over_limit(None);
+        let mut st = PolicyState::default();
+        let t = Instant::now();
+        let plan = decide(&cfg, &snap, &mut st, t);
+        for busy in [20, 21, 31] {
+            assert_eq!(plan.levels.get(&busy), Some(&Level::Ease), "eased on a few threads, never paused unseen");
+        }
+        assert!(plan.saver && plan.deep);
+        assert!(!plan.levels.contains_key(&30) && !plan.levels.contains_key(&10), "quiet processes are left alone");
+        assert!(!plan.levels.contains_key(&40), "and Spry itself");
+        // Rested, with still nobody in front: everything is let go.
+        let rested = decide(&cfg, &desk(None), &mut st, t + Duration::from_secs(1));
+        assert!(rested.levels.is_empty());
+    }
+
+    #[test]
+    fn over_its_limit_the_rules_set_by_name_still_win() {
+        let cfg = Config { never_slow: vec!["browser".into()], ..performance() };
+        assert!(!run(&cfg, &over_limit(Some(20))).levels.contains_key(&31), "Never slow stays never");
+        assert!(!run(&cfg, &over_limit(None)).levels.contains_key(&31));
+        let saver = Config::default();
+        let plan = run(&saver, &over_limit(Some(20)));
+        assert_eq!(plan.levels.get(&31), Some(&Level::Pulse), "Saver mode pulses the busiest too");
+        // Switched off in Settings, the engine never sets `over` (see engine::run_loop).
+        assert_eq!(run(&saver, &desk(Some(20))).levels.get(&31), Some(&Level::Ease));
     }
 
     #[test]

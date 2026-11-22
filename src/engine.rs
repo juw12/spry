@@ -243,6 +243,7 @@ impl Sampler {
             mem_free_pct: self.sys.available_memory() as f32 * 100.0 / total as f32,
             mem_total: total,
             self_pid: self.self_pid,
+            limit: crate::limit::View::default(),
         }
     }
 }
@@ -618,6 +619,10 @@ fn status_json(
         "mem_free_pct": snap.mem_free_pct,
         "mem_total": snap.mem_total,
         "pressure": st.pressure,
+        // Against the load limit: over or not, the average it is judged by, and the limit itself.
+        "limit": json!({ "on": cfg.limit, "over": snap.limit.over, "average": snap.limit.average,
+                         "minutes": snap.limit.minutes, "over_secs": snap.limit.over_secs,
+                         "cpu": cfg.limit_cpu, "window": cfg.limit_minutes }),
         "front_cpu": st.front_cpu,
         "front_rested_secs": st.rested(Instant::now()).map(|d| d.as_secs_f32()),
         "front_now": snap.front_now,
@@ -671,6 +676,9 @@ pub fn run_loop(shared: &Shared) {
     let front: Option<u32> = std::env::var("SPRY_FRONT_PID").ok().and_then(|pid| pid.parse().ok());
     // The app in front, while held apps are lent its idle time.
     let mut resting: Option<HashSet<u32>> = None;
+    // The processor's average over the last hour or so, and whether it is over the limit.
+    let mut limit = crate::limit::Limit::default();
+    let mut against_limit = crate::limit::View::default();
 
     while !shared.quit.load(Ordering::Relaxed) {
         let cfg = shared.cfg.lock().unwrap().clone();
@@ -682,7 +690,13 @@ pub fn run_loop(shared: &Shared) {
         if slow {
             snap = sampler.sample();
             measured = Some(Instant::now());
+            // Every reading counts, also while Spry is paused or switched off: the computer
+            // works just as hard then. Only the holding is left out below.
+            limit.feed(Instant::now(), snap.cpu_total, cfg.limit_minutes);
+            against_limit = limit.judge(Instant::now(), cfg.limit_cpu, cfg.limit_minutes);
         }
+        snap.limit = against_limit;
+        snap.limit.over &= cfg.limit;
         snap.fg = front.or_else(platform::foreground_pid);
         // Read it twice a second, so the hold is back quickly when it starts to work.
         snap.front_now = resting.as_ref().and_then(|family| sampler.front_now(family));
