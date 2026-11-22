@@ -206,6 +206,12 @@ pub fn rule_for_name(cfg: &Config, name: &str) -> Rule {
 }
 
 pub fn decide(cfg: &Config, snap: &Snapshot, st: &mut PolicyState, now: Instant) -> Plan {
+    // Over its load limit the whole computer has worked too hard for too long (limit.rs). Until
+    // it has rested, Spry does what Saver mode does, whatever mode it is in: nothing is lent and
+    // held apps keep to a few processor threads. The busiest are also paused in short pulses,
+    // because a lower priority alone takes no work away while nothing else wants the processor.
+    let over = snap.limit.over;
+
     // CPU pressure, with a delay both ways so short spikes change nothing.
     if snap.cpu_total >= cfg.pressure_cpu {
         st.calm_since = None;
@@ -217,17 +223,13 @@ pub fn decide(cfg: &Config, snap: &Snapshot, st: &mut PolicyState, now: Instant)
         if snap.cpu_total < cfg.pressure_cpu - 15.0 {
             if now.duration_since(*st.calm_since.get_or_insert(now)) >= PRESSURE_OFF {
                 st.pressure = false;
-                st.pulsed.clear();
             }
         } else {
             st.calm_since = None;
         }
     }
-    // Over its load limit the whole computer has worked too hard for too long (limit.rs). Until
-    // it has rested, Spry does what Saver mode does, whatever mode it is in: nothing is lent and
-    // held apps keep to a few processor threads. The busiest are also paused in short pulses,
-    // because a lower priority alone takes no work away while nothing else wants the processor.
-    let over = snap.limit.over;
+    // A pulsed process measures lower because it is pulsed, so it stays pulsed for as long as
+    // the reason lasts: pressure, or the load limit.
     if !over && !st.pressure {
         st.pulsed.clear();
     }
