@@ -1,0 +1,1351 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Spry guide: Makes an old computer use less and keeps it quick</title>
+<meta name="description" content="Makes an old computer use less and keeps it quick">
+<link rel="canonical" href="https://juw12.github.io/spry/">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Spry">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#fbfaf6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#171614" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="Spry guide">
+<meta property="og:description" content="Makes an old computer use less and keeps it quick">
+<style>
+:root{--paper:#fbfaf6;--ink:#1d1c1a;--soft:#5d5a54;--line:#e3dfd5;--card:#ffffff;--accent:#95238b;--code:#f1eee6}
+@media (prefers-color-scheme:dark){:root{--paper:#171614;--ink:#eeebe4;--soft:#a9a49a;--line:#35322d;--card:#201f1c;--accent:#e085d9;--code:#262420}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:17px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+header.bar{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:12px;min-height:60px;padding:8px 16px;padding-top:max(8px,env(safe-area-inset-top));background:var(--paper);border-bottom:1px solid var(--line)}
+header.bar img{width:36px;height:36px;border-radius:9px;flex:none}
+header.bar .name{font-weight:700;font-size:18px;line-height:1.2;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+header.bar .name small{display:block;font-weight:500;font-size:13px;color:var(--soft)}
+header.bar a.source{flex:none;display:inline-flex;align-items:center;min-height:48px;padding:0 16px;border:1px solid var(--line);border-radius:24px;background:var(--card);color:var(--ink);font-size:15px;font-weight:600;text-decoration:none}
+main{max-width:760px;margin:0 auto;padding:20px 16px 40px}
+main img{max-width:100%;height:auto;border-radius:8px}
+main h1{font-size:30px;line-height:1.2;margin:24px 0 12px}
+main h2{font-size:23px;line-height:1.25;margin:36px 0 12px;padding-top:14px;border-top:1px solid var(--line)}
+main h3{font-size:19px;line-height:1.3;margin:26px 0 8px}
+main h4{font-size:17px;margin:22px 0 6px}
+main p,main li{overflow-wrap:anywhere}
+main a{color:var(--accent);text-underline-offset:3px;padding:6px 0}
+main p[align=center] a,main li>a:only-child{display:inline-block;padding:11px 3px}
+main a:has(>img){display:inline-block;padding:8px 0}
+main p[align=center] a:has(>img[width="100%"]){display:block;padding:0}
+main ul,main ol{padding-left:24px}
+main li{margin:6px 0}
+main blockquote{margin:16px 0;padding:4px 16px;border-left:4px solid var(--accent);color:var(--soft)}
+main code{font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--code);padding:2px 5px;border-radius:5px;overflow-wrap:anywhere}
+main pre{background:var(--code);padding:14px;border-radius:10px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+main pre code{background:none;padding:0;overflow-wrap:normal;white-space:pre}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:16px 0}
+main table{border-collapse:collapse;font-size:15px;min-width:100%}
+main th,main td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+main th{background:var(--code)}
+main hr{border:0;border-top:1px solid var(--line);margin:28px 0}
+main kbd{font:13px ui-monospace,Menlo,monospace;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 5px}
+main details{margin:12px 0}
+main summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:600}
+footer{max-width:760px;margin:0 auto;padding:18px 16px calc(28px + env(safe-area-inset-bottom));border-top:1px solid var(--line);color:var(--soft);font-size:14px}
+footer a{color:var(--soft)}
+</style>
+</head>
+<body>
+<header class="bar">
+<img src="icons/icon-192.png" alt="" width="36" height="36">
+<div class="name">Spry<small>Guide</small></div>
+<a class="source" href="https://github.com/juw12/spry">GitHub</a>
+</header>
+<main id="guide">
+<p align="center" dir="auto"><a target="_blank" rel="noopener noreferrer" href="https://github.com/juw12/spry/blob/main/assets/logo.png"><img loading="lazy" src="https://raw.githubusercontent.com/juw12/spry/main/assets/logo.png" width="96" alt="Spry" style="max-width: 100%;"></a></p>
+<h1 dir="auto">Spry</h1>
+<p dir="auto"><strong>Makes an old computer use less, and keeps it quick.</strong> Spry watches which app you are using and<br>
+holds the busy apps behind it back. It has two modes:</p>
+<ul dir="auto">
+<li><strong>Saver</strong> (the default): busy apps stay held for as long as they are in the background, also while<br>
+you read, think or step away. Where the hold bites, the computer does less work, so it uses less<br>
+processor and stays cooler, and work in the background takes longer. How much is measured under<br>
+<a href="#saver-and-performance">Saver and Performance</a>: on Windows and Linux test machines with four<br>
+processor threads, two busy background apps went from half of the processor to a quarter and got<br>
+half of their work done; on a real MacBook Pro 2019 the computer went from 72% busy to 39%<br>
+(measured with 0.5.0); on the two macOS test machines it saved little or nothing.</li>
+<li><strong>Performance</strong>: busy background apps are held only while the app in front is working, and get<br>
+the processor back while it rests. The app in front is quicker; the computer does about as much<br>
+work as without Spry.</li>
+</ul>
+<p dir="auto">When you switch apps, it switches with you. When Spry stops, everything is exactly as it was.</p>
+<p dir="auto">One small program for <strong>Windows, macOS and Linux</strong>. Free and open source (MIT). No account, no<br>
+administrator rights. It works without an internet connection; with one, it keeps itself up to date<br>
+(see <a href="#updates">Updates</a>).</p>
+<p dir="auto"><a target="_blank" rel="noopener noreferrer" href="https://github.com/juw12/spry/blob/main/docs/dashboard.png"><img loading="lazy" src="dashboard.png" alt="Spry's window in Saver mode: what is held back right now" style="max-width: 100%;"></a></p>
+<p dir="auto"><sub>Spry 0.6.3's own window in Saver mode, shown with example apps (the names and numbers in the<br>
+pictures are examples, not a measurement). <strong>How</strong> says what Spry is doing to a process (eased,<br>
+pulsed, frozen, or at full speed while the app in front rests; explained under<br>
+<a href="#how-it-works">How it works</a>); <strong>For</strong> says how long. The window follows your system's light or dark<br>
+setting until you choose one at the bottom left, and fits a small window:</sub></p>
+<p dir="auto"><a target="_blank" rel="noopener noreferrer" href="https://github.com/juw12/spry/blob/main/docs/dashboard-dark.png"><img loading="lazy" src="dashboard-dark.png" width="66%" alt="The same page in dark mode" style="max-width: 100%;"></a> <a target="_blank" rel="noopener noreferrer" href="https://github.com/juw12/spry/blob/main/docs/dashboard-phone.png"><img loading="lazy" src="dashboard-phone.png" width="24%" alt="The same page in a narrow window" style="max-width: 100%;"></a></p>
+<p dir="auto"><strong>Overview</strong> plots the last minute of whole-computer CPU usage, with a live <strong>ON</strong>, <strong>OFF</strong> or <strong>PAUSED</strong> label attached to the newest point. The strip inside the chart marks when each state was observed; gaps mean no readings.<br>
+Choose <strong>Record OFF reference</strong> to release holds for 65 seconds (first five seconds discarded).<br>
+Spry resumes its configured behavior without changing your settings, even with the window closed. The dashed<br>
+line overlays that earlier OFF minute on the live timeline; the difference is current CPU minus the recorded<br>
+OFF average, in percentage points. Refresh the reference under a similar workload. It is not a simultaneous<br>
+measurement or an estimate of CPU saved.<br>
+For a controlled comparison, open <strong>Measure → Run comparison</strong>. Each chart uses the same zero baseline<br>
+for Off and On; throughput is better when higher, while typical and p95 response times are better when lower.<br>
+The latest result is saved on this computer. A live change in CPU use alone is not proof of a speedup.</p>
+<h2 dir="auto">What you get</h2>
+<p dir="auto">Measured by the program itself (<code class="notranslate">spry bench</code>) on GitHub's test machines, which have 3 or 4 processor<br>
+threads like many older laptops. The test starts twice as many busy background processes as the<br>
+machine has threads, then measures how much work the app in front gets done and how fast it reacts<br>
+to a click. On Windows and Linux the test is repeated with only 2 threads allowed, as a stand-in for<br>
+a smaller machine.</p>
+<p dir="auto">These tables measure the time while the app in front is working, with the hold Performance mode<br>
+uses under this load. Saver mode holds at least as much: since 0.6.4 it also keeps the held apps to<br>
+about a quarter of the processor threads on Windows and Linux. What the app in front gains with<br>
+that narrower hold has not been measured separately. The modes differ most while the app in front<br>
+rests: Performance lends the processor back (measured under<br>
+<a href="#what-it-costs-the-apps-that-are-held">What it costs the apps that are held</a>), Saver keeps<br>
+holding (measured under <a href="#saver-and-performance">Saver and Performance</a>).</p>
+
+<markdown-accessiblity-table><div class="scroll"><table role="table">
+<thead>
+<tr>
+<th>System</th>
+<th>Runs</th>
+<th>Threads</th>
+<th>Kept free</th>
+<th>Quiet</th>
+<th>Busy, Spry off</th>
+<th>Busy, Spry on</th>
+<th>Gain (lowest-highest)</th>
+<th>Of quiet speed</th>
+<th>With Strong mode</th>
+<th>Slowest 5% of reactions, off -&gt; on</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows, x64</td>
+<td>5</td>
+<td>4</td>
+<td>2</td>
+<td>252</td>
+<td>189</td>
+<td>251</td>
+<td><strong>1.32x</strong> (1.29-1.37)</td>
+<td>100%</td>
+<td>not offered</td>
+<td>8.4 -&gt; 4.2 ms</td>
+</tr>
+<tr>
+<td>macOS 15, Apple silicon</td>
+<td>5</td>
+<td>3</td>
+<td>none</td>
+<td>243</td>
+<td>106</td>
+<td>237</td>
+<td><strong>2.17x</strong> (1.91-4.06)</td>
+<td>93%</td>
+<td>2.37x</td>
+<td>5.1 -&gt; 5.9 ms</td>
+</tr>
+<tr>
+<td>macOS 15, Intel</td>
+<td>5</td>
+<td>4</td>
+<td>none</td>
+<td>249</td>
+<td>93</td>
+<td>241</td>
+<td><strong>2.48x</strong> (1.99-3.03)</td>
+<td>99%</td>
+<td>2.68x</td>
+<td>4.4 -&gt; 4.4 ms</td>
+</tr>
+<tr>
+<td>Linux (Ubuntu), x64</td>
+<td>5</td>
+<td>4</td>
+<td>2</td>
+<td>249</td>
+<td>113</td>
+<td>250</td>
+<td><strong>2.20x</strong> (2.02-2.85)</td>
+<td>100%</td>
+<td>2.20x</td>
+<td>12.1 -&gt; 4.2 ms</td>
+</tr>
+<tr>
+<td>Windows, x64, on 2 threads only</td>
+<td>5</td>
+<td>2</td>
+<td>1</td>
+<td>251</td>
+<td>76</td>
+<td>241</td>
+<td><strong>3.03x</strong> (2.74-3.89)</td>
+<td>96%</td>
+<td>not offered</td>
+<td>4.3 -&gt; 4.1 ms</td>
+</tr>
+<tr>
+<td>Linux (Ubuntu), x64, on 2 threads only</td>
+<td>5</td>
+<td>2</td>
+<td>1</td>
+<td>250</td>
+<td>89</td>
+<td>229</td>
+<td><strong>2.60x</strong> (2.52-2.61)</td>
+<td>91%</td>
+<td>2.63x</td>
+<td>14.1 -&gt; 4.3 ms</td>
+</tr>
+<tr>
+<td>Linux (Ubuntu), ARM64</td>
+<td>5</td>
+<td>4</td>
+<td>1</td>
+<td>251</td>
+<td>104</td>
+<td>249</td>
+<td><strong>2.39x</strong> (1.84-2.89)</td>
+<td>99%</td>
+<td>2.40x</td>
+<td>12.0 -&gt; 4.1 ms</td>
+</tr>
+<tr>
+<td>Linux (Ubuntu), ARM64, on 2 threads only</td>
+<td>5</td>
+<td>2</td>
+<td>1</td>
+<td>251</td>
+<td>84</td>
+<td>251</td>
+<td><strong>3.02x</strong> (2.03-3.10)</td>
+<td>100%</td>
+<td>3.02x</td>
+<td>11.9 -&gt; 4.0 ms</td>
+</tr>
+</tbody>
+</table></div></markdown-accessiblity-table>
+<p dir="auto">Each row is the median over its CI runs (<a href="https://github.com/juw12/spry/actions/runs/44508838506">44508838506</a>, <a href="https://github.com/juw12/spry/actions/runs/44508849036">44508849036</a>, <a href="https://github.com/juw12/spry/actions/runs/44508870158">44508870158</a>, <a href="https://github.com/juw12/spry/actions/runs/44508880495">44508880495</a>, <a href="https://github.com/juw12/spry/actions/runs/44510374146">44510374146</a>). Work is in steps per second.</p>
+
+<p dir="auto">These runs were made with the 0.3.1 code. The gain is measured against the same plain busy<br>
+processes as in every earlier version, and with Strong mode off, which is how Spry now comes on<br>
+every system. The 0.6.4 code was measured again for the Saver table further down; what the same<br>
+test gave the app in front in those runs is shown there, in its last column.</p>
+<p dir="auto"><strong>The weak results, said plainly:</strong></p>
+<ul dir="auto">
+<li>On the Windows test machine with all 4 threads the gain is still the smallest (1.32x), because<br>
+Windows already gives the app in front most of what it needs. With Spry it reaches 100% of a quiet<br>
+machine. The gain there also depends on which processor the test machine happens to have: when<br>
+the released 0.2.1 and 0.3.0 were measured in turns on the same six machines<br>
+(<a href="https://github.com/juw12/spry/actions/runs/44504694485">run 44504694485</a>, values in<br>
+<code class="notranslate">docs/bench/ab-0.2.1/</code>), both gave 1.26-1.30x on one processor model and 1.33-1.47x on the three<br>
+others, and on the same machine 0.3.0 was never more than 0.03 below 0.2.1. The five runs of<br>
+0.3.0 gave 1.38x here and these five give 1.32x, with nothing changed in between for the time<br>
+the app in front works.</li>
+<li>On macOS a normal program cannot keep part of the processor free, and how apps are held while<br>
+the app in front works has not changed since 0.1.1. The two macOS test machines vary most<br>
+between runs, so read their rows as "about twice", not to the decimal: Apple silicon gave 1.91x<br>
+to 4.06x in these five runs and reaches 93% of a quiet machine. Intel gives 2.48x (99% of quiet)<br>
+now, where the five runs of 0.3.0 gave 2.12x (90%) and those of 0.2.0 gave 2.28x, with the same<br>
+code for this part each time. Reactions on the two macOS test machines were already short<br>
+(4 to 5 ms) and did not get shorter; on Apple silicon they were a little longer with Spry on<br>
+(5.1 -&gt; 5.9 ms).</li>
+<li>The app in front is furthest from a quiet machine on Linux limited to 2 threads (91%).</li>
+<li>After the app in front has rested, the hold is not back at once: 0.6 to 1.1 seconds on the test<br>
+machines (see the next section). An app in front that keeps using more than 5% of one processor<br>
+core while you only look at it (a video call, a page with moving pictures) never counts as<br>
+resting, so nothing is lent then.</li>
+<li>The app in front in this test uses one processor thread. An app that uses all of them gains less:<br>
+it has the kept-free threads to itself and shares the rest. That case is not measured yet.</li>
+<li>The "2 threads only" rows are the same test machines limited to two threads. Nobody has measured<br>
+Spry on a real old laptop yet.</li>
+</ul>
+<p dir="auto"><strong>From version to version</strong>, same test machines, same load, median gain:</p>
+
+<markdown-accessiblity-table><div class="scroll"><table role="table">
+<thead>
+<tr>
+<th>System</th>
+<th>0.1.1</th>
+<th>0.2.0</th>
+<th>0.3.1 (now)</th>
+<th>With pulses, 0.2.0</th>
+<th>With pulses, now</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows, x64</td>
+<td>1.27x</td>
+<td>1.39x</td>
+<td>1.32x</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr>
+<td>macOS 15, Apple silicon</td>
+<td>2.21x</td>
+<td>2.13x</td>
+<td>2.17x</td>
+<td>2.17x</td>
+<td>2.37x</td>
+</tr>
+<tr>
+<td>macOS 15, Intel</td>
+<td>2.10x</td>
+<td>2.28x</td>
+<td>2.48x</td>
+<td>2.50x</td>
+<td>2.68x</td>
+</tr>
+<tr>
+<td>Linux (Ubuntu), x64</td>
+<td>1.09x</td>
+<td>2.36x</td>
+<td>2.20x</td>
+<td>2.37x</td>
+<td>2.20x</td>
+</tr>
+<tr>
+<td>Windows, x64, on 2 threads only</td>
+<td>-</td>
+<td>2.99x</td>
+<td>3.03x</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr>
+<td>Linux (Ubuntu), x64, on 2 threads only</td>
+<td>-</td>
+<td>2.53x</td>
+<td>2.60x</td>
+<td>2.56x</td>
+<td>2.63x</td>
+</tr>
+<tr>
+<td>Linux (Ubuntu), ARM64</td>
+<td>-</td>
+<td>2.07x</td>
+<td>2.39x</td>
+<td>2.09x</td>
+<td>2.40x</td>
+</tr>
+<tr>
+<td>Linux (Ubuntu), ARM64, on 2 threads only</td>
+<td>-</td>
+<td>3.01x</td>
+<td>3.02x</td>
+<td>3.01x</td>
+<td>3.02x</td>
+</tr>
+</tbody>
+</table></div></markdown-accessiblity-table>
+
+<p dir="auto">The first three columns are easing only, with no process ever stopped; the last two add the pulses<br>
+of Strong mode. Version 0.1.1 had nothing on Linux that held the processor back without pausing<br>
+apps (1.09x), and reached 92% of a quiet machine on Windows. Versions 0.3.0 and 0.3.1 did not<br>
+change how apps are held while the app in front works, so where the "now" column differs from 0.2.0<br>
+(lower on Windows and Linux x64, higher on macOS Intel and Linux ARM64) that is the spread between<br>
+runs and test machines, not a change in Spry. The five runs of 0.3.0, with the same code for this<br>
+part, show how wide that spread is: 1.38x on Windows, 2.90x on Linux x64, 2.12x on macOS Intel and<br>
+2.78x on Linux ARM64. What 0.3 changed is in the next section. The reaction times of 0.1.1 (up to 126 ms on macOS) were<br>
+mostly the test's own timer waking late on these virtual machines, so they are not compared here;<br>
+since 0.2.0 every reaction is timed from a click sent by a second thread. The earlier results are<br>
+kept in <code class="notranslate">docs/bench/v0.1/</code>, <code class="notranslate">docs/bench/v0.2/</code> and <code class="notranslate">docs/bench/v0.3.0/</code>.</p>
+<ul dir="auto">
+<li><strong>Quiet</strong> = nothing else running. <strong>Busy, Spry off</strong> = background processes take what they want.<br>
+<strong>Busy, Spry on</strong> = the same load, held back by Spry as it comes, with no setting changed.</li>
+<li><strong>With Strong mode</strong>: the gain with pulses added (macOS and Linux). Since 0.3.0 Strong mode is off<br>
+everywhere until you tick it, also on Linux: there the pulses added almost nothing for the app in<br>
+front and cost the held apps a large part of their speed (see<br>
+<a href="#what-it-costs-the-apps-that-are-held">What it costs the apps that are held</a>). If you used an<br>
+earlier version, your saved settings are kept, so Strong mode stays on until you untick it.</li>
+<li><strong>Kept free</strong>: how many processor threads background apps stay off while the machine is under<br>
+pressure (Windows and Linux; macOS gives a normal program no way to do this). In Saver mode they<br>
+stay off them all the time, and since 0.6.4 they keep to about a quarter of the threads.</li>
+<li><strong>Slowest 5% of reactions</strong>: a second thread "clicks" 60 times a second; this is how long the app<br>
+in front takes to answer, for the slowest twentieth of the clicks.</li>
+<li>These are shared virtual machines and the numbers move between runs, which is why the lowest and<br>
+highest gain are shown. Your computer will differ, so measure it: press <strong>Measure now</strong> on the page<br>
+(under a minute), or run <code class="notranslate">spry bench</code>.</li>
+</ul>
+<p dir="auto"><strong>What Spry itself costs.</strong> Measured half a minute after a fresh install on the same test machines<br>
+(<a href="https://github.com/juw12/spry/actions/runs/44476935590">install check of 0.2.0, run 44476935590</a>):</p>
+<markdown-accessiblity-table><div class="scroll"><table role="table">
+<thead>
+<tr>
+<th>System</th>
+<th>Memory</th>
+<th>Processor once settled</th>
+<th>Processor time in the first 35-45 s, start included</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td>12.5 MB</td>
+<td>0.1% of one core</td>
+<td>0.14 s</td>
+</tr>
+<tr>
+<td>macOS, Apple silicon</td>
+<td>30.3 MB</td>
+<td>1.4% of one core</td>
+<td>0.55 s</td>
+</tr>
+<tr>
+<td>macOS, Intel</td>
+<td>21.1 MB</td>
+<td>1.2% of one core</td>
+<td>0.96 s</td>
+</tr>
+<tr>
+<td>Linux, x64</td>
+<td>1.3 MB</td>
+<td>0.1% of one core</td>
+<td>under 0.01 s</td>
+</tr>
+<tr>
+<td>Linux, ARM64</td>
+<td>1.3 MB</td>
+<td>0.1% of one core</td>
+<td>under 0.01 s</td>
+</tr>
+</tbody>
+</table></div></markdown-accessiblity-table>
+<p dir="auto">On a busy machine it looks more often. One reading taken by hand, not from a linked run: on the<br>
+author's Windows PC (8 cores, 370 processes, 75% busy) it used 7.7 MB and about 2% of one core.</p>
+<h2 dir="auto">What it costs the apps that are held</h2>
+<p dir="auto">Holding an app back means it gets less done. Up to 0.2 that was true all the time: a held app<br>
+stayed held while you were reading or away, when nothing needed the processor. Since 0.3.0 the time<br>
+can be lent: in Performance mode, while the app in front rests, the held apps run as if Spry were<br>
+not there. Saver mode, the default since 0.5, keeps them held on purpose: that is where its saving<br>
+comes from. Up to 0.6.3 its price was the "still held" column below. Since 0.6.4 Saver holds<br>
+harder on Windows and Linux, and its price is in the tables under<br>
+<a href="#saver-and-performance">Saver and Performance</a>.</p>
+<p dir="auto">Measured in the same runs as the table above, with a second set of busy background processes that<br>
+count their own work. 100% is what they get done with Spry off.</p>
+
+<markdown-accessiblity-table><div class="scroll"><table role="table">
+<thead>
+<tr>
+<th>System</th>
+<th>Front app works: held (lowest-highest)</th>
+<th>Front app rests: still held (0.2; Saver mode up to 0.6.3)</th>
+<th>The same with pulses (0.2 on Linux)</th>
+<th>Front app rests: lent (Performance mode, lowest-highest)</th>
+<th>Hold back after (slowest)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows, x64</td>
+<td>56% (55-57)</td>
+<td>50%</td>
+<td>not offered</td>
+<td><strong>100%</strong> (99-100)</td>
+<td>1.1 s (1.1 s)</td>
+</tr>
+<tr>
+<td>macOS 15, Apple silicon</td>
+<td>54% (17-86)</td>
+<td>55%</td>
+<td>30%</td>
+<td><strong>99%</strong> (97-102)</td>
+<td>0.8 s (1.1 s)</td>
+</tr>
+<tr>
+<td>macOS 15, Intel</td>
+<td>95% (64-115)</td>
+<td>93%</td>
+<td>32%</td>
+<td><strong>100%</strong> (82-104)</td>
+<td>0.6 s (0.9 s)</td>
+</tr>
+<tr>
+<td>Linux (Ubuntu), x64</td>
+<td>54% (54-55)</td>
+<td>50%</td>
+<td>20%</td>
+<td><strong>100%</strong> (99-101)</td>
+<td>0.8 s (0.9 s)</td>
+</tr>
+<tr>
+<td>Windows, x64, on 2 threads only</td>
+<td>49% (37-62)</td>
+<td>48%</td>
+<td>not offered</td>
+<td><strong>100%</strong> (100-101)</td>
+<td>timed on all threads only</td>
+</tr>
+<tr>
+<td>Linux (Ubuntu), x64, on 2 threads only</td>
+<td>56% (55-61)</td>
+<td>50%</td>
+<td>20%</td>
+<td><strong>100%</strong> (100-100)</td>
+<td>timed on all threads only</td>
+</tr>
+<tr>
+<td>Linux (Ubuntu), ARM64</td>
+<td>80% (80-82)</td>
+<td>75%</td>
+<td>30%</td>
+<td><strong>100%</strong> (100-100)</td>
+<td>1.0 s (1.0 s)</td>
+</tr>
+<tr>
+<td>Linux (Ubuntu), ARM64, on 2 threads only</td>
+<td>57% (57-60)</td>
+<td>50%</td>
+<td>20%</td>
+<td><strong>100%</strong> (100-100)</td>
+<td>timed on all threads only</td>
+</tr>
+</tbody>
+</table></div></markdown-accessiblity-table>
+
+<ul dir="auto">
+<li><strong>Front app works: held</strong> is what the held apps still get done while the app in front is busy.<br>
+This part is the price of the gain and has not changed: the processor is finite, and while you<br>
+work the others wait.</li>
+<li><strong>Front app rests: still held</strong> is what they got up to 0.2 while the app in front did nothing,<br>
+and what they got in Saver mode up to 0.6.3 (0.6.4 is measured under<br>
+<a href="#saver-and-performance">Saver and Performance</a>). <strong>The same with pulses</strong> is what they got on<br>
+Linux as 0.2 came, or anywhere with Strong mode ticked. Up to 0.2 nobody had chosen to lose this<br>
+time; in Saver mode it is the saving you asked for.</li>
+<li><strong>Front app rests: lent</strong> is what they get in Performance mode.</li>
+<li><strong>Hold back after</strong> is how long after the app in front starts working again the others are held<br>
+again, timed in a test that runs the whole program (median, and the slowest of the five runs).<br>
+During that moment the app in front shares the processor as if Spry were off.</li>
+</ul>
+<p dir="auto">Said plainly: on the macOS Apple silicon test machine the "front app works" figure went from 17% to<br>
+86% between runs (3% to 76% in the runs of 0.3.0), so that row says little; the system's background<br>
+state there can leave a held app almost nothing. On macOS Intel two of the five runs showed the<br>
+lent apps at 82% and 90% of their free speed; every other reading in that column is 97% or more.<br>
+And a rest only<br>
+counts after 6 seconds below 5% of one processor core, so short pauses between keystrokes lend<br>
+nothing.</p>
+<p dir="auto"><strong>On a real, busy computer the test machines were wrong about Windows.</strong> The test machines run<br>
+nothing but the test. The author's Windows PC (8 threads) was busy with his own background jobs,<br>
+which run at a lower priority than normal. There 0.3.0, released an hour before, lent far less<br>
+than the table said: it gave the processor threads back but left the lent apps at lower priority,<br>
+and they had to share with those other jobs. 0.3.1 gives the priority back as well. Both released<br>
+downloads, run in turns on that PC (<code class="notranslate">spry bench</code>, readings taken by hand, kept in<br>
+<code class="notranslate">docs/bench/by-hand/</code>):</p>
+<markdown-accessiblity-table><div class="scroll"><table role="table">
+<thead>
+<tr>
+<th>On that PC, while the app in front rests</th>
+<th>Held apps get, of their speed with Spry off</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Lent by 0.3.0 (four readings)</td>
+<td>38%, 41%, 48%, 51%</td>
+</tr>
+<tr>
+<td>Lent by 0.3.1 (two readings)</td>
+<td><strong>99%, 106%</strong></td>
+</tr>
+<tr>
+<td>Not lent, held the way 0.2 did (all six readings)</td>
+<td>0% to 2%</td>
+</tr>
+</tbody>
+</table></div></markdown-accessiblity-table>
+<p dir="auto">The same readings show the price while the app in front works more sharply than the test machines<br>
+do: the held apps got 0% to 2.5% of their free speed there, not about half. One reason is the test<br>
+itself: it holds only its own background processes, so the author's other jobs, which were not<br>
+held, went ahead of them. With Spry running for real those jobs would be held as well and all of<br>
+them would share what the app in front leaves. That case has not been measured. The app in front<br>
+gained 1.96x to 2.21x on that PC (90% to 99% of a quiet machine) in the same six readings.</p>
+<h3 dir="auto">Saver and Performance</h3>
+<p dir="auto"><strong>Settings → What Spry is for</strong> chooses the mode. Until 0.4 Spry only had what is now Performance<br>
+mode; since 0.5 a new install starts in Saver mode.</p>
+<p dir="auto">In <strong>Saver</strong> mode nothing is lent: a busy background app stays held until you switch back to it.<br>
+It is held the deeper way all the time (on Windows also Efficiency mode, low memory priority and<br>
+part of the processor kept free; on Linux part of the processor kept free; on macOS the background<br>
+state, which is already the deep one). Since 0.6.4, on Windows and Linux, the held apps together<br>
+also keep to about a quarter of the processor threads, on the weakest cores: one of four, two of<br>
+eight, and one of two or three. That is what lets Saver use less when the computer still has<br>
+processor to spare, and it is why held work takes longer than in Performance mode. macOS gives a<br>
+normal program no way to do this. Spry itself also looks less often: every four seconds while<br>
+its window is open, every eight on a calm machine. The app in front, the apps you set to "never<br>
+slow" and the built-in "never touched" list stay exempt. "Lend idle time" is kept for when you<br>
+switch to Performance.</p>
+<p dir="auto">What Saver mode saves is processor work, and with it heat and fan noise. It is not a wattage cap,<br>
+and battery life has not been measured. It does not shrink the memory of other apps: on macOS and<br>
+Linux the system decides about memory; on Windows held apps get a low memory priority.</p>
+<p dir="auto"><strong>Measured on the test machines</strong>, Spry 0.6.4, by <code class="notranslate">spry bench</code>: the app in front rests and the<br>
+background is held the way Saver mode holds it. The same machines and the same test as under<br>
+<a href="#what-you-get">What you get</a>, and once more with two busy background processes only, because a<br>
+computer is not always overloaded.</p>
+
+<p dir="auto"><strong>More busy processes than processor threads</strong> (the load of the tables above):</p>
+<markdown-accessiblity-table><div class="scroll"><table role="table">
+<thead>
+<tr>
+<th>System</th>
+<th>Runs</th>
+<th>Threads</th>
+<th>Busy processes</th>
+<th>Threads the held apps run on</th>
+<th>Work the held apps get done, Spry off = 100% (lowest-highest)</th>
+<th>Whole computer busy, off -&gt; Saver (lowest-highest)</th>
+<th>The same two on 0.6.3</th>
+<th>Gain for the app in front in the same runs (lowest-highest)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows, x64</td>
+<td>6</td>
+<td>4</td>
+<td>8</td>
+<td>1 of 4</td>
+<td><strong>25%</strong> (24-27)</td>
+<td>100% -&gt; <strong>28%</strong> (26-31)</td>
+<td>49%, 52% busy</td>
+<td>1.38x (1.30-1.42)</td>
+</tr>
+<tr>
+<td>macOS 15, Apple silicon</td>
+<td>6</td>
+<td>3</td>
+<td>6</td>
+<td>all</td>
+<td><strong>48%</strong> (8-87)</td>
+<td>100% -&gt; <strong>100%</strong> (100-100)</td>
+<td>70%, 100% busy</td>
+<td>2.40x (1.93-2.65)</td>
+</tr>
+<tr>
+<td>macOS 15, Intel</td>
+<td>6</td>
+<td>4</td>
+<td>8</td>
+<td>all</td>
+<td><strong>94%</strong> (75-105)</td>
+<td>100% -&gt; <strong>100%</strong> (100-100)</td>
+<td>93%, 100% busy</td>
+<td>2.92x (1.87-4.90)</td>
+</tr>
+<tr>
+<td>Linux (Ubuntu), x64</td>
+<td>6</td>
+<td>4</td>
+<td>8</td>
+<td>1 of 4</td>
+<td><strong>26%</strong> (25-27)</td>
+<td>100% -&gt; <strong>25%</strong> (25-25)</td>
+<td>50%, 50% busy</td>
+<td>2.24x (1.98-2.56)</td>
+</tr>
+<tr>
+<td>Windows, x64, on 2 threads only</td>
+<td>6</td>
+<td>2</td>
+<td>4</td>
+<td>1 of 2</td>
+<td><strong>50%</strong> (50-56)</td>
+<td>50% -&gt; <strong>26%</strong> (25-26)</td>
+<td>50%, 26% busy</td>
+<td>2.98x (2.97-3.81)</td>
+</tr>
+<tr>
+<td>Linux (Ubuntu), x64, on 2 threads only</td>
+<td>6</td>
+<td>2</td>
+<td>4</td>
+<td>1 of 2</td>
+<td><strong>50%</strong> (50-53)</td>
+<td>50% -&gt; <strong>25%</strong> (25-25)</td>
+<td>50%, 25% busy</td>
+<td>2.49x (2.42-2.58)</td>
+</tr>
+<tr>
+<td>Linux (Ubuntu), ARM64</td>
+<td>6</td>
+<td>4</td>
+<td>8</td>
+<td>1 of 4</td>
+<td><strong>25%</strong> (25-25)</td>
+<td>100% -&gt; <strong>25%</strong> (25-25)</td>
+<td>75%, 75% busy</td>
+<td>2.69x (2.08-2.99)</td>
+</tr>
+<tr>
+<td>Linux (Ubuntu), ARM64, on 2 threads only</td>
+<td>6</td>
+<td>2</td>
+<td>4</td>
+<td>1 of 2</td>
+<td><strong>50%</strong> (50-50)</td>
+<td>50% -&gt; <strong>25%</strong> (25-25)</td>
+<td>50%, 25% busy</td>
+<td>3.00x (2.03-3.01)</td>
+</tr>
+</tbody>
+</table></div></markdown-accessiblity-table>
+<p dir="auto"><strong>Two busy processes only</strong>, so with processor to spare:</p>
+<markdown-accessiblity-table><div class="scroll"><table role="table">
+<thead>
+<tr>
+<th>System</th>
+<th>Runs</th>
+<th>Threads</th>
+<th>Busy processes</th>
+<th>Threads the held apps run on</th>
+<th>Work the held apps get done, Spry off = 100% (lowest-highest)</th>
+<th>Whole computer busy, off -&gt; Saver (lowest-highest)</th>
+<th>The same two on 0.6.3</th>
+<th>Gain for the app in front in the same runs (lowest-highest)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows, x64</td>
+<td>6</td>
+<td>4</td>
+<td>2</td>
+<td>1 of 4</td>
+<td><strong>50%</strong> (50-50)</td>
+<td>50% -&gt; <strong>25%</strong> (25-25)</td>
+<td>98%, 50% busy</td>
+<td>1.08x (1.05-1.11)</td>
+</tr>
+<tr>
+<td>macOS 15, Apple silicon</td>
+<td>6</td>
+<td>3</td>
+<td>2</td>
+<td>all</td>
+<td><strong>73%</strong> (4-86)</td>
+<td>86% -&gt; <strong>82%</strong> (75-100)</td>
+<td>82%, 79% busy</td>
+<td>1.00x (0.91-1.03)</td>
+</tr>
+<tr>
+<td>macOS 15, Intel</td>
+<td>6</td>
+<td>4</td>
+<td>2</td>
+<td>all</td>
+<td><strong>92%</strong> (70-96)</td>
+<td>53% -&gt; <strong>53%</strong> (52-100)</td>
+<td>97%, 53% busy</td>
+<td>1.02x (0.92-1.46)</td>
+</tr>
+<tr>
+<td>Linux (Ubuntu), x64</td>
+<td>6</td>
+<td>4</td>
+<td>2</td>
+<td>1 of 4</td>
+<td><strong>50%</strong> (50-50)</td>
+<td>50% -&gt; <strong>25%</strong> (25-25)</td>
+<td>96%, 50% busy</td>
+<td>1.09x (1.04-1.10)</td>
+</tr>
+<tr>
+<td>Linux (Ubuntu), ARM64</td>
+<td>6</td>
+<td>4</td>
+<td>2</td>
+<td>1 of 4</td>
+<td><strong>50%</strong> (50-50)</td>
+<td>50% -&gt; <strong>25%</strong> (25-25)</td>
+<td>100%, 50% busy</td>
+<td>1.00x (1.00-1.00)</td>
+</tr>
+</tbody>
+</table></div></markdown-accessiblity-table>
+<p dir="auto">Each row is the median over its CI runs of the 0.6.4 code (<a href="https://github.com/juw12/spry/actions/runs/44668866888">44668866888</a>, <a href="https://github.com/juw12/spry/actions/runs/44669537954">44669537954</a>, <a href="https://github.com/juw12/spry/actions/runs/44669545117">44669545117</a>, <a href="https://github.com/juw12/spry/actions/runs/44669552273">44669552273</a>, <a href="https://github.com/juw12/spry/actions/runs/44669559397">44669559397</a>, <a href="https://github.com/juw12/spry/actions/runs/44669566421">44669566421</a>): 6 runs per row. The 0.6.3 column is the median over the runs of the 0.6.3 code (<a href="https://github.com/juw12/spry/actions/runs/44660688597">44660688597</a>, <a href="https://github.com/juw12/spry/actions/runs/44660697840">44660697840</a>, <a href="https://github.com/juw12/spry/actions/runs/44660706129">44660706129</a>, <a href="https://github.com/juw12/spry/actions/runs/44660714265">44660714265</a>, <a href="https://github.com/juw12/spry/actions/runs/44660722516">44660722516</a>, <a href="https://github.com/juw12/spry/actions/runs/44661399638">44661399638</a>, <a href="https://github.com/juw12/spry/actions/runs/44661407887">44661407887</a>, <a href="https://github.com/juw12/spry/actions/runs/44661417018">44661417018</a>, <a href="https://github.com/juw12/spry/actions/runs/44661425398">44661425398</a>, <a href="https://github.com/juw12/spry/actions/runs/44661433237">44661433237</a>, <a href="https://github.com/juw12/spry/actions/runs/44662489281">44662489281</a>): 11 runs per row in the first table, 6 in the second.</p>
+
+<ul dir="auto">
+<li><strong>Work the held apps get done</strong> is the price: what the busy background processes still finish,<br>
+with Spry off as 100%.</li>
+<li><strong>Whole computer busy</strong> is the saving: the share of all processor threads in use, read from the<br>
+system, with Spry off and in Saver mode. On the "2 threads only" rows the test is confined to<br>
+two of the machine's four threads and the reading is over all four, so 50% there is two full<br>
+threads.</li>
+<li><strong>Threads the held apps run on</strong> is how many processor threads the held apps share in Saver<br>
+mode. "all" on macOS, where a normal program cannot set this.</li>
+<li><strong>The same two on 0.6.3</strong> is the work the held apps got done and how busy the computer was in<br>
+Saver mode with the 0.6.3 code, which only kept held apps off the kept-free threads.</li>
+<li><strong>Gain for the app in front</strong> is the test of <a href="#what-you-get">What you get</a> in these runs.</li>
+</ul>
+<p dir="auto"><strong>What these numbers say, plainly:</strong></p>
+<ul dir="auto">
+<li>On Windows and Linux, Saver mode now lowers processor use also when the computer has processor<br>
+to spare. With two busy processes on four threads the computer went from 50% busy to 25% on all<br>
+three machines; with 0.6.3 it stayed at 50%. The price: the two held apps share one thread and<br>
+got 50% of their work done, where 0.6.3 left them 96% to 100%.</li>
+<li>Under the full load the computer went from 100% busy to 25% on Linux and 28% on Windows. With<br>
+0.6.3 it went to 50%, 52% and 75% (ARM64). The held apps got about a quarter of their work done;<br>
+with 0.6.3 it was about half, and three quarters on ARM64.</li>
+<li>On the "2 threads only" rows nothing changed against 0.6.3. One of the two threads was already<br>
+kept free, so the held apps were on one thread before as well.</li>
+<li>So the price is real. In these tests a busy job in the background took two to four times as long<br>
+in Saver mode on Windows and Linux. If you are waiting for that job, bring its window to the<br>
+front, set the app to "never slow", or choose Performance mode.</li>
+<li>On the two macOS test machines 0.6.4 changes nothing, because macOS gives a normal program a<br>
+lower priority for another app, not a cap. Under the full load the computer stayed 100% busy and<br>
+the held apps got 48% (Apple silicon, 8% to 87% between runs) and 94% (Intel) of their work<br>
+done. With two busy processes it went from 86% to 82% and from 53% to 53%. On the real MacBook<br>
+below the same hold did much more (72% busy to 39%) than on these virtual Macs. Which of the two<br>
+your Mac resembles is not known until you measure it.</li>
+<li>The macOS Intel test machine was itself slow in five of the six full-load runs: with nothing<br>
+else running it did 35 to 116 steps per second, where it usually does about 250. Its rows are<br>
+kept in the table and say little about Spry.</li>
+<li>Efficiency mode on Windows can also lower the processor's clock speed on a real laptop. A<br>
+virtual test machine cannot show that, and it has not been measured.</li>
+<li>So "uses less processor" is measured on Windows and Linux test machines under both loads, and on<br>
+one real Mac with 0.5.0. The test machines are virtual and have four threads. A real laptop with<br>
+0.6.4 in Saver mode has not been measured. Press <strong>Measure now</strong> or run <code class="notranslate">spry bench</code> to see what<br>
+your computer does.</li>
+</ul>
+<p dir="auto"><strong>On a real, busy Windows PC.</strong> The author's PC (8 threads, busy with his own jobs), the released<br>
+0.6.3 and 0.6.4, three readings of <code class="notranslate">spry bench</code> each, taken by hand and kept in<br>
+<code class="notranslate">docs/bench/by-hand/</code>:</p>
+<markdown-accessiblity-table><div class="scroll"><table role="table">
+<thead>
+<tr>
+<th>Version</th>
+<th>Load of the test</th>
+<th>Held apps got, of their speed with Spry off</th>
+<th>Whole PC busy, off -&gt; hold kept</th>
+<th>Gain for the app in front</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0.6.3</td>
+<td>16 busy processes</td>
+<td>7%</td>
+<td>100% -&gt; 93%</td>
+<td>2.56x</td>
+</tr>
+<tr>
+<td>0.6.3</td>
+<td>16 busy processes, again</td>
+<td>16%</td>
+<td>100% -&gt; 88%</td>
+<td>2.90x</td>
+</tr>
+<tr>
+<td>0.6.3</td>
+<td>2 busy processes</td>
+<td>86%</td>
+<td>62% -&gt; 52%</td>
+<td>1.12x</td>
+</tr>
+<tr>
+<td>0.6.4</td>
+<td>16 busy processes</td>
+<td>29%</td>
+<td>100% -&gt; 77%</td>
+<td>2.77x</td>
+</tr>
+<tr>
+<td>0.6.4</td>
+<td>16 busy processes, again</td>
+<td>22%</td>
+<td>100% -&gt; 78%</td>
+<td>2.92x</td>
+</tr>
+<tr>
+<td>0.6.4</td>
+<td>2 busy processes</td>
+<td>58%</td>
+<td>81% -&gt; 77%</td>
+<td>0.88x</td>
+</tr>
+</tbody>
+</table></div></markdown-accessiblity-table>
+<p dir="auto">The test holds only its own processes. The author's other jobs were not held, so they took most of<br>
+what the held ones gave up, and the PC stayed mostly full. With Spry in Saver mode for real those<br>
+jobs would be held as well; that has not been measured. With 0.6.4 the held processes were kept to<br>
+2 of the 8 threads and the PC went from full to about 77% busy; before the 0.6.4 readings the<br>
+PC was already 73 to 76% busy with the author's jobs. In both rows with 2 busy processes the<br>
+author's jobs moved during the reading, so those points are not a saving to count on, and in the<br>
+0.6.4 one the app in front did less work with Spry on than with it off (0.88x). That reading<br>
+cannot say why.</p>
+<p dir="auto"><strong>Measured on a real laptop</strong>, Spry 0.5.0 on a MacBook Pro 2019 (Intel i5-8257U, 8 threads, macOS 15.7), 19 Nov 2026.<br>
+Four busy processes in the background that belong to no app, the app in front resting, 30 seconds<br>
+per state after 16 seconds to settle. The processor time is what the system accounted to the four.</p>
+<markdown-accessiblity-table><div class="scroll"><table role="table">
+<thead>
+<tr>
+<th>State</th>
+<th>Processor time the four busy processes got</th>
+<th>Whole computer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Off</td>
+<td>94% of a core each</td>
+<td>72% busy</td>
+</tr>
+<tr>
+<td>On, Performance</td>
+<td>94% of a core each (lent)</td>
+<td>73% busy</td>
+</tr>
+<tr>
+<td>On, Saver</td>
+<td>29% of a core each (held)</td>
+<td>39% busy</td>
+</tr>
+<tr>
+<td>Off again</td>
+<td>93% of a core each</td>
+<td>72% busy</td>
+</tr>
+</tbody>
+</table></div></markdown-accessiblity-table>
+<p dir="auto">In Saver mode the busy background apps got 70% less processor time and the computer was at 39%<br>
+instead of 72%. They also get that much less done. Performance mode, with the app in front resting,<br>
+is the same as off, as it is meant to be. One computer, one run per state: measure yours under<br>
+<strong>Measure</strong>, where the fourth chart shows the same thing. Other systems hold differently (see the<br>
+table under <a href="#how-it-works">How it works</a>), so the saving there will differ.</p>
+<p dir="auto">Pausing a process did not give memory back on that Mac: a paused process that held 600 MB still<br>
+held 604 MB a minute later (43% of memory was free). That is why Saver mode does not pause apps by<br>
+itself; "Freeze in background" stays a rule you set per app.</p>
+<h2 dir="auto">The load limit</h2>
+<p dir="auto">New in 0.7.0, on unless you switch it off (Settings, <strong>Load limit</strong>).</p>
+<p dir="auto">Why it is there: a laptop ran several AI assistants for 100 hours at about 80% of its processor.<br>
+At no moment was it under pressure for long, so nothing ever held anything back, and it never<br>
+rested either. Then its drive dropped out in the middle of the work. A moment at 100% does a<br>
+computer no harm. Days at 80% are what make the heat.</p>
+<p dir="auto">So Spry keeps the processor's average use, minute by minute, over the last hour. When that average<br>
+reaches the limit (75% unless you change it), the computer is over its limit, and until it has<br>
+rested Spry does this, whichever mode it is in:</p>
+<ul dir="auto">
+<li>nothing is lent: busy apps in the background stay held, also while the app in front rests;</li>
+<li>they are held the deeper way and, on Windows and Linux, kept to about a quarter of the processor<br>
+threads, as in Saver mode;</li>
+<li>those that use half a processor core or more are also paused in short pulses (120 ms paused,<br>
+80 ms running). A lower priority alone takes no work away while nothing else wants the<br>
+processor; a pulse does;</li>
+<li>with the screen locked or nobody at the computer, where no app is in front, busy apps are held<br>
+as well. That is when nobody is there to notice how hard it works. Without an app in front they<br>
+are only eased, never paused.</li>
+</ul>
+<p dir="auto">It counts as rested once the average is 5 points under the limit (70% for a limit of 75%). The<br>
+page says <strong>Over its load limit</strong> while it lasts, and Settings shows the average it is judged by.<br>
+The limit (30 to 100%) and the stretch (10 to 240 minutes) can be changed there, or in<br>
+<code class="notranslate">config.json</code> as <code class="notranslate">limit</code>, <code class="notranslate">limit_cpu</code> and <code class="notranslate">limit_minutes</code>.</p>
+<p dir="auto">What it does not do, so nobody counts on it:</p>
+<ul dir="auto">
+<li>Spry reads no temperature. It limits the work that makes the heat.</li>
+<li>The app in front and everything it started is never held. If that app is what keeps the<br>
+processor busy (a game, a render you are watching), the computer stays over its limit and only<br>
+the background is held.</li>
+<li>"Never slow" rules still win, and system programs are never touched, as everywhere in Spry.</li>
+<li>It is not judged before 45 of the 60 minutes have been seen, and a computer that slept or was<br>
+off starts fresh.</li>
+<li>What the hold saves depends on the system and the load. On the office PC it was written for,<br>
+Saver's hold alone took 16 busy processes from 100% of the processor to about 77% (see<br>
+<a href="#saver-and-performance">Saver and Performance</a>); the pulses come on top. How far the limit<br>
+brings a computer down, and how much cooler that leaves it, has not been measured yet.</li>
+</ul>
+<p dir="auto">The rule itself is tested on every system by CI (<code class="notranslate">limit::tests</code> and the <code class="notranslate">over_its_limit_*</code> tests<br>
+of the policy): an hour at 80% is over, a busy quarter of an hour is not, and the holds are the<br>
+ones listed above. It has not run for an hour on a real computer yet.</p>
+<h2 dir="auto">What it cannot do</h2>
+<ul dir="auto">
+<li>It does not add memory or make the processor faster. It decides who goes first. Work in the<br>
+background takes longer: in Performance mode while the app in front is working, in Saver mode<br>
+for as long as it is in the background. How much longer is measured under<br>
+<a href="#what-it-costs-the-apps-that-are-held">What it costs the apps that are held</a>.</li>
+<li>If the app in front is slow by itself with nothing else running, Spry changes nothing.</li>
+<li>A computer that is out of memory stays out of memory. On Windows, Spry can ask large background<br>
+apps to give back memory they are not using; on macOS and Linux the system does not offer that.</li>
+<li>While the app in front works and the machine is under pressure, background apps on Windows and<br>
+Linux run on fewer processor threads (on a 4-thread machine: 2), so they take longer. That is the<br>
+price of the gain above. In Performance mode they get every thread back when the app in front<br>
+rests. In Saver mode they stay on about a quarter of the threads all the time (on a 4-thread<br>
+machine: 1), which in the tests cost them half to three quarters of their speed.</li>
+<li>The downloads are not signed yet, so Windows and macOS warn on first start (see Install). They<br>
+can be checked another way: see "Check a download" under Install. What signing needs, and what<br>
+is already prepared for it, is in <a href="https://github.com/juw12/spry/blob/main/docs/signing.md">docs/signing.md</a>.</li>
+</ul>
+<h2 dir="auto">Install</h2>
+<p dir="auto"><strong>Windows 10 or 11</strong></p>
+<ol dir="auto">
+<li>Download <a href="https://github.com/juw12/spry/releases/latest/download/spry-windows-x64.zip">spry-windows-x64.zip</a>.</li>
+<li>Open the zip and drag <code class="notranslate">spry.exe</code> to a folder you keep, for example Documents.</li>
+<li>Double-click <code class="notranslate">spry.exe</code>. Windows shows "Windows protected your PC" because the file is not signed<br>
+yet: choose <strong>More info</strong>, then <strong>Run anyway</strong>.</li>
+</ol>
+<p dir="auto"><strong>macOS 11 or newer</strong> (Apple silicon and Intel), without Terminal:</p>
+<ol dir="auto">
+<li>Download <a href="https://github.com/juw12/spry/releases/latest/download/Spry-macos.zip">Spry-macos.zip</a>.</li>
+<li>Double-click the zip in Downloads, then drag <strong>Spry</strong> into the Applications folder.</li>
+<li>Open Spry. macOS says "Spry" was not opened, because Spry is not signed by Apple yet: choose<br>
+<strong>Done</strong> (not "Move to Trash", which some Macs call "Move to Bin").</li>
+<li>Open System Settings &gt; Privacy &amp; Security, scroll down to Security and press <strong>Open Anyway</strong><br>
+next to Spry. macOS asks once more: press <strong>Open Anyway</strong> again, then type the name and<br>
+password of an administrator of the Mac (on your own Mac that is you). Then Spry opens. The<br>
+button is there for about an hour after step 3. (On macOS 14 or older: hold Control, click<br>
+Spry, choose <strong>Open</strong>.) Apple describes the same steps in<br>
+<a href="https://support.apple.com/guide/mac-help/mh40616/mac" rel="nofollow">Open a Mac app from an unknown developer</a>.</li>
+</ol>
+<p dir="auto">From then on Spry opens like any app and keeps itself up to date. Said plainly: on 20 Nov 2026 a<br>
+script went through these steps on a macOS 15 test machine with the released 0.6.3 and 0.6.4<br>
+downloads. Step 3's message, the <strong>Open Anyway</strong> button in Settings, the second question and the<br>
+password window all came up as written (<a href="https://github.com/juw12/spry/tree/main/docs/mac-install">pictures</a>). macOS did not let the<br>
+script press OK in the password window, so the last moment, Spry opening after the password, has<br>
+not been seen, and no person has clicked through with this version. After every release a test<br>
+machine also checks that the zip opens the way Finder opens it and that the app in it is whole and<br>
+is the released version.</p>
+<p dir="auto"><strong>macOS with one line.</strong> Open Terminal, paste this line, press Return:</p>
+<div class="highlight highlight-source-shell" dir="auto"><pre class="notranslate">curl -fsSL https://raw.githubusercontent.com/juw12/spry/main/install.sh <span class="pl-k">|</span> sh</pre></div>
+<p dir="auto">It puts <strong>Spry.app</strong> into Applications (your own Applications folder when the shared one is not<br>
+yours to write to), starts it, and makes the <code class="notranslate">spry</code> command point into the app. macOS does not ask<br>
+this way, because the download did not come through a browser. This way is run on two Mac test<br>
+machines after every release.</p>
+<p dir="auto"><strong>Linux</strong> (x64 and ARM64): the same line as on a Mac. Spry has to see which app is in front:</p>
+<markdown-accessiblity-table><div class="scroll"><table role="table">
+<thead>
+<tr>
+<th>Desktop</th>
+<th>Does Spry see the app in front?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Any desktop on X11</td>
+<td>Yes.</td>
+</tr>
+<tr>
+<td>Wayland with sway</td>
+<td>Yes, tested on every change.</td>
+</tr>
+<tr>
+<td>Wayland with Hyprland or niri</td>
+<td>Written from their documentation, not yet tried on a real session. <code class="notranslate">spry front</code> tells you.</td>
+</tr>
+<tr>
+<td>Wayland with GNOME or KDE (the default on current Ubuntu and Fedora)</td>
+<td>No: these desktops do not tell other programs. Spry then only follows the rules you set on its page, so it helps less there.</td>
+</tr>
+</tbody>
+</table></div></markdown-accessiblity-table>
+<p dir="auto"><strong>After the first start</strong> Spry opens its window and works at once, with no settings. On Windows and<br>
+macOS that is a window of its own, like any app (it uses the web view that comes with the system:<br>
+WebView2 on Windows, WebKit on macOS; on a Windows without WebView2 the page opens in the browser).<br>
+Closing the window does not stop Spry: it goes on in the tray (Windows) or the menu bar (macOS), and<br>
+the icon opens the window again. The window is a process of its own, so a closed window costs<br>
+nothing: Spry itself stays as small as the page says. On Linux the page opens in your browser;<br>
+run <code class="notranslate">spry open</code> for it.<br>
+Tick <strong>Start Spry when I sign in</strong> under Settings to keep it. The page lists the apps that are busy,<br>
+held back or have a rule; apps that are doing nothing are folded away behind one button.</p>
+<p dir="auto"><strong>To undo everything:</strong> press <strong>Quit Spry</strong> under Settings (every app is put back at that moment), untick<br>
+"Start Spry when I sign in", and delete the file (on a Mac: Spry.app in Applications, and the <code class="notranslate">spry</code><br>
+link in <code class="notranslate">~/.local/bin</code>). Spry leaves nothing else behind except a small settings folder.</p>
+<p dir="auto">People who prefer a terminal on Windows: <code class="notranslate">irm https://raw.githubusercontent.com/juw12/spry/main/install.ps1 | iex</code></p>
+<p dir="auto"><strong>Check a download.</strong> Every file on the <a href="https://github.com/juw12/spry/releases/latest">release page</a><br>
+has its SHA-256 checksum next to it (<code class="notranslate">&lt;file&gt;.sha256</code>). The install lines above compare the two and<br>
+install nothing when they differ. Each file also has a build record, signed by GitHub, that says<br>
+which source commit and which workflow produced it. With the<br>
+<a href="https://cli.github.com/">GitHub command line tool</a>:</p>
+<div class="highlight highlight-source-shell" dir="auto"><pre class="notranslate">gh attestation verify spry-linux-x64.tar.gz -R juw12/spry
+gh attestation verify Spry-macos.zip -R juw12/spry</pre></div>
+<p dir="auto">This shows the file was built from this repository's source by its release workflow, and not<br>
+changed afterwards. It is not the same as a signature from Microsoft's or Apple's programmes, so the<br>
+first-start warnings on Windows and macOS remain.</p>
+<h2 dir="auto">Updates</h2>
+<p dir="auto">Spry keeps itself up to date. Half a minute after it starts, and then once a day, it asks GitHub<br>
+which release is the newest (in an hour again when it got no answer, as on a laptop that was not<br>
+online yet). When that one is newer than the Spry that is running, Spry:</p>
+<ol dir="auto">
+<li>downloads the file for your system from the release page into a folder next to itself;</li>
+<li>compares it with the SHA-256 checksum published next to it;</li>
+<li>starts the downloaded program once and checks that it answers with the announced version;</li>
+<li>puts it in the place of the one that is there (on a Mac: the whole Spry.app);</li>
+<li>quits the usual way, so every app is put back, and starts again as the new version. If its<br>
+window was open, it opens again.</li>
+</ol>
+<p dir="auto">When a step fails nothing is replaced: the Spry that is there keeps running, and its page says what<br>
+went wrong, with a button to try again.</p>
+<ul dir="auto">
+<li><strong>To decide yourself</strong>, untick <strong>Update Spry automatically</strong> under Settings. Spry then only says<br>
+on its page that a newer version is out, with an <strong>Update now</strong> button.</li>
+<li><strong>From a terminal:</strong> <code class="notranslate">spry update</code> does it now.</li>
+<li><strong>Never look:</strong> start Spry with the environment variable <code class="notranslate">SPRY_UPDATE_FROM</code> set to nothing. Set to<br>
+an address, Spry looks there instead of GitHub (a folder with <code class="notranslate">latest.json</code> and the downloads).</li>
+</ul>
+<p dir="auto">What you should know about it:</p>
+<ul dir="auto">
+<li>The daily look is one request to <code class="notranslate">github.com</code>: the address of the newest release's page. Only<br>
+when that gives no answer Spry asks <code class="notranslate">api.github.com</code>, which answers 60 times an hour per network<br>
+address, shared by everyone behind the same office or provider. Like every request it shows<br>
+GitHub your internet address. Nothing about you, your computer or your apps is in it, and Spry<br>
+makes no other connection.</li>
+<li>Behind a proxy, <code class="notranslate">curl</code> uses the one named in the environment variable <code class="notranslate">HTTPS_PROXY</code>. Tried on an<br>
+office PC that reaches GitHub only that way.</li>
+<li>The checksum shows that the download arrived whole and is the file on the release page. It is<br>
+the same check the install lines make. Spry does not check the build record (see "Check a<br>
+download" above) by itself, so it trusts the release page of this repository.</li>
+<li>It uses the <code class="notranslate">curl</code> and <code class="notranslate">tar</code> that come with the system (on Windows: since Windows 10 of 2018).<br>
+Where they are missing, or where Spry may not write to its own folder, it only tells you.</li>
+<li>A Spry that updated itself restarts on its own, once per release. Apps that were held run at<br>
+full speed for the second or two in between.</li>
+<li>Tested on every change on all five systems with a folder standing in for the release page, and<br>
+after every release against the real release page (see <a href="#safety">Safety</a>). Not yet tried: a Mac<br>
+on which Spry was started by "Start Spry when I sign in".</li>
+<li>0.6.0, the first version that updates itself, did not come back after an update when its window<br>
+was open or had been open a moment before: the check against the real release page found that on<br>
+Windows and macOS within minutes of the release, and 0.6.1 fixes it. If you have 0.6.0, start<br>
+Spry again by hand after it has updated; from 0.6.1 on it comes back by itself.</li>
+<li>Until 0.6.1 the look went to <code class="notranslate">api.github.com</code> only, and a look that got no answer was repeated a<br>
+day later. On a shared network address that answer can be "too many requests": it happened to<br>
+the check of 0.6.1 on one of GitHub's Mac test machines. 0.6.1 also brought its window back when<br>
+anything had asked it for its numbers in the last 10 seconds (<code class="notranslate">spry status</code> in a script, for<br>
+example), not only when the window was open. 0.6.2 changes all three.</li>
+</ul>
+<h2 dir="auto">How it works</h2>
+<p dir="auto">Every half second Spry asks the system which app is in front. Every two seconds (every five while<br>
+the computer is calm) it measures all running apps.</p>
+<ul dir="auto">
+<li><strong>The app in front is never touched</strong>, together with everything it started and the app that<br>
+started it.</li>
+<li>An app you just left keeps full speed for 10 seconds.</li>
+<li>A background app that uses more than 10% of one processor core is <strong>eased</strong>: it only gets the<br>
+processor when the app in front does not need it.</li>
+<li>In Saver mode easing is always the deeper kind, nothing is lent, and on Windows and Linux held<br>
+apps keep to about a quarter of the processor threads (see<br>
+<a href="#saver-and-performance">Saver and Performance</a>). The next two points describe Performance mode.</li>
+<li>When the whole processor is above 80% for 4 seconds, easing goes deeper. On Windows and Linux,<br>
+eased apps then stay off part of the processor (about a quarter of the threads, in whole cores,<br>
+never more than half), so the app in front always finds a free one. Strong mode (off until you<br>
+tick it) also <strong>pulses</strong> the heaviest background processes (120 ms paused, 80 ms running).</li>
+<li><strong>The time is lent.</strong> When the app in front and everything it started have used less than 5% of<br>
+one processor core for 6 seconds, the held apps get the whole processor back and the page shows<br>
+them at "Full speed". Spry then looks twice a second, and the hold returns as soon as the app in<br>
+front works again. Switching to another app counts as working. Apps you set to "always slow" or<br>
+"freeze" are not lent anything, and one tick on the page ("Lend idle time") switches this off.</li>
+<li>You can set a rule per app: never slow, always slow in the background, or <strong>freeze</strong> in the<br>
+background (fully paused until you switch back to it).</li>
+<li>Calls, music, recording and the desktop are on a built-in "never touched" list, and every program<br>
+that lives in a system folder is skipped whatever its name.</li>
+</ul>
+<p dir="auto">What "eased" means on each system:</p>
+<markdown-accessiblity-table><div class="scroll"><table role="table">
+<thead>
+<tr>
+<th>System</th>
+<th>Eased</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows 10/11</td>
+<td>Lower priority class. Under pressure also Efficiency mode, low memory priority, and part of the processor kept free. In Saver mode that is so all the time, on about a quarter of the processor threads.</td>
+<td>Also releases unused memory of large background apps when memory runs low. An app that picked its own processor threads keeps them.</td>
+</tr>
+<tr>
+<td>macOS 11+</td>
+<td>The system's background state (what <code class="notranslate">taskpolicy -b</code> sets): lowest processor priority, throttled disk.</td>
+<td>Apple silicon and Intel.</td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Idle disk priority. Under pressure part of the processor is kept free. In Saver mode that is so all the time, on about a quarter of the processor threads.</td>
+<td>A normal user cannot raise a priority again after lowering it, so Spry does not lower it; which threads an app may use can be put back, so Spry uses that, and gives every thread back exactly what it had.</td>
+</tr>
+</tbody>
+</table></div></markdown-accessiblity-table>
+<h2 dir="auto">Safety</h2>
+<ul dir="auto">
+<li><strong>Everything is put back</strong> when you pause Spry, switch it off or quit it. Spry saves what each<br>
+process looked like before, and restores exactly that.</li>
+<li>If Spry is killed or the computer crashes, the list of held processes is on disk: the next start,<br>
+or <code class="notranslate">spry rescue</code>, puts them back. A frozen app is resumed the same way.</li>
+<li>If an app changes its own priority (browsers do this for their tabs) or picks its own processor<br>
+threads while Spry holds it, Spry leaves that choice alone and does not undo it.</li>
+<li>The system is left alone twice over: Spry runs without administrator rights, so it cannot reach<br>
+system services or other users' apps; and it skips every program that lives in a system folder<br>
+(<code class="notranslate">C:\Windows</code>, <code class="notranslate">/System</code>, <code class="notranslate">/usr/libexec</code> and the like) as well as a built-in list of desktop,<br>
+sound, call, music and recording apps. Apps that come with the system, such as Photos or Safari,<br>
+count as apps.</li>
+<li>The page is served on <code class="notranslate">127.0.0.1</code> only and needs a secret token that is created on your computer.</li>
+<li>A newer Spry replaces the one that is there only when the download matches its published<br>
+checksum and answers with the announced version. Otherwise nothing is changed (see<br>
+<a href="#updates">Updates</a>).</li>
+<li>Storage cleaning shows what it found and removes nothing until you choose. It only looks at<br>
+caches, temporary files and the bin, never at documents, downloads or app data.</li>
+</ul>
+<p dir="auto">This is tested on every change, on Windows, macOS (Apple silicon and Intel) and Linux (x64 and<br>
+ARM64) (<a href="https://github.com/juw12/spry/actions/workflows/ci.yml">CI</a>): a real busy process is eased,<br>
+paused, frozen, kept off part of the processor, and put back; Spry is killed and <code class="notranslate">spry rescue</code> puts<br>
+the process back; on Linux, a process that picks its own processor threads while held keeps them.<br>
+A second check (<a href="https://github.com/juw12/spry/actions/workflows/install.yml">install</a>) runs the<br>
+install steps from this page on each system, confirms the installed Spry starts and answers, feeds<br>
+the installer a changed download and confirms it is refused, has the installed Spry update itself<br>
+from the release page and start again, and verifies the build record of every download.</p>
+<p dir="auto">Each promise above has a test with a name you can read, run on every change:</p>
+<markdown-accessiblity-table><div class="scroll"><table role="table">
+<thead>
+<tr>
+<th>Promise</th>
+<th>Test</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Everything is put back, exactly</td>
+<td><code class="notranslate">easing_shows_and_is_put_back_exactly</code>, <code class="notranslate">freezing_stops_the_process_and_thawing_starts_it_again</code>, <code class="notranslate">under_pressure_part_of_the_processor_is_kept_free_and_given_back</code>, <code class="notranslate">saver_mode_keeps_a_held_app_to_a_few_threads_and_gives_them_back</code> in <a href="https://github.com/juw12/spry/blob/main/tests/roundtrip.rs">tests/roundtrip.rs</a></td>
+</tr>
+<tr>
+<td>Put back after Spry is killed</td>
+<td><code class="notranslate">eases_shows_restores_and_rescues</code> in <a href="https://github.com/juw12/spry/blob/main/tests/end_to_end.rs">tests/end_to_end.rs</a></td>
+</tr>
+<tr>
+<td>An app's own choice is left alone</td>
+<td><code class="notranslate">a_priority_the_app_set_itself_is_never_undone</code>, <code class="notranslate">a_choice_the_app_made_itself_while_eased_is_left_alone</code> in <a href="https://github.com/juw12/spry/blob/main/tests/roundtrip.rs">tests/roundtrip.rs</a></td>
+</tr>
+<tr>
+<td>Held apps get full speed while the app in front rests, and the hold is back within 3 seconds</td>
+<td><code class="notranslate">lends_while_the_front_app_rests_and_holds_again_when_it_works</code> in <a href="https://github.com/juw12/spry/blob/main/tests/end_to_end.rs">tests/end_to_end.rs</a>, <code class="notranslate">lending_gives_the_speed_back_and_the_hold_can_return</code>, <code class="notranslate">the_fresh_reading_sees_the_front_app_work_and_rest</code>, <code class="notranslate">the_main_reading_sees_a_process_stop_completely</code> in <a href="https://github.com/juw12/spry/blob/main/tests/roundtrip.rs">tests/roundtrip.rs</a>, <code class="notranslate">held_apps_are_lent_the_time_while_the_front_app_rests</code>, <code class="notranslate">nothing_is_lent_when_switched_off_by_rule_or_without_a_known_front_app</code> in <a href="https://github.com/juw12/spry/blob/main/src/policy.rs">src/policy.rs</a></td>
+</tr>
+<tr>
+<td>The app in front is never touched</td>
+<td><code class="notranslate">busy_background_is_eased_and_the_front_app_is_not</code>, <code class="notranslate">focus_on_a_child_window_covers_the_whole_app</code> in <a href="https://github.com/juw12/spry/blob/main/src/policy.rs">src/policy.rs</a></td>
+</tr>
+<tr>
+<td>System programs and the "never touched" list are skipped</td>
+<td><code class="notranslate">programs_that_belong_to_the_system_are_recognised_by_where_they_live</code> in <a href="https://github.com/juw12/spry/blob/main/src/config.rs">src/config.rs</a>, <code class="notranslate">never_slow_and_protected_are_left_alone</code> in <a href="https://github.com/juw12/spry/blob/main/src/policy.rs">src/policy.rs</a></td>
+</tr>
+<tr>
+<td>The page answers only with the token</td>
+<td><code class="notranslate">eases_shows_restores_and_rescues</code> (asks without and with a wrong token) in <a href="https://github.com/juw12/spry/blob/main/tests/end_to_end.rs">tests/end_to_end.rs</a></td>
+</tr>
+<tr>
+<td>An update replaces Spry only with a download that matches its checksum and is the announced version</td>
+<td><code class="notranslate">an_older_spry_replaces_itself_with_the_newer_download_and_starts_again</code>, <code class="notranslate">on_a_mac_the_whole_app_is_replaced</code>, <code class="notranslate">a_download_that_is_changed_or_not_the_announced_version_changes_nothing</code> in <a href="https://github.com/juw12/spry/blob/main/tests/update.rs">tests/update.rs</a>, <code class="notranslate">a_higher_version_is_newer_and_anything_odd_is_not</code> in <a href="https://github.com/juw12/spry/blob/main/src/update.rs">src/update.rs</a></td>
+</tr>
+<tr>
+<td>Storage: looking removes nothing, and only caches, temporary files and the bin are looked at</td>
+<td><code class="notranslate">sweep_removes_only_old_files_and_keeps_the_root</code>, <code class="notranslate">only_folders_well_inside_home_or_temp_are_accepted</code>, <code class="notranslate">no_cleaning_folder_is_inside_your_own_files</code> in <a href="https://github.com/juw12/spry/blob/main/src/clean.rs">src/clean.rs</a></td>
+</tr>
+</tbody>
+</table></div></markdown-accessiblity-table>
+<p dir="auto">What went wrong along the way, so you can judge the testing. The largest fault got past every<br>
+test: 0.3.0 was released lending less than it claimed on Windows. It gave the processor threads back<br>
+but kept the lower priority, which costs nothing on a test machine that runs only the test, and cost<br>
+half the speed on a real PC busy with other work (see<br>
+<a href="#what-it-costs-the-apps-that-are-held">What it costs the apps that are held</a>). It was found by<br>
+running the released download on a real PC and fixed in 0.3.1 the same day; the test that a lent<br>
+process looks exactly as it did before Spry touched it now runs on Windows as well as macOS. The<br>
+five CI runs behind the table all passed. A sixth<br>
+(<a href="https://github.com/juw12/spry/actions/runs/44508859482">44508859482</a>) passed on four machines<br>
+and was cancelled while still waiting for a macOS Apple silicon machine, so no test failed in it<br>
+and it is not in the table. Getting to 0.3.0 took several corrections. A new test failed 2 of 13 times<br>
+on macOS Intel; it was a real fault, not a shaky test: on macOS a process that had stopped<br>
+completely kept showing its last reading, so Spry could go on thinking a resting app was working.<br>
+After the fix the test passed 56 of 56 times. A second new test failed on Windows because the first<br>
+reading of a process that has just appeared is always about 0 there; the test now skips it. The<br>
+first way of measuring what the hold costs made the busy processes count their work, which changed<br>
+the load itself; measuring the released 0.2.1 beside it on the same machines showed that, and the<br>
+gain is now measured against the untouched processes with a separate counting set for the cost.<br>
+The same comparison showed that the Windows gain depends on the test machine's processor model.<br>
+One check did not pass on the five runs of 0.3.0: the median gain of every row was to be at least<br>
+the lowest 0.2.0 run of that row, and "Linux, ARM64, on 2 threads only" gave 3.005x against 3.007x,<br>
+a row where the app in front already runs at 100% of a quiet machine. On the five runs of 0.3.1 the<br>
+same check passes, by as little (3.025x against 3.007x in that row, 1.32x against 1.30x on<br>
+Windows), so it says more about the spread of these machines than about Spry.</p>
+<p dir="auto">Two of the seven runs of 0.1.1 failed a test on macOS Intel (one test expected one held process where Spry rightly held two;<br>
+one measured a busy process while other tests ran beside it). Both were faults in the tests and are<br>
+fixed. The reaction-time column of 0.1.1 measured the test's own timer more than Spry (see above).<br>
+The install check also showed 0.1.0 easing two<br>
+macOS system helpers it did not know by name. That was put back as always, and 0.1.1 skips every<br>
+program in a system folder.</p>
+<h2 dir="auto">Commands</h2>
+<pre class="notranslate"><code class="notranslate">spry              start Spry and open its window
+spry open         open the window of the running Spry
+spry status       show what is being held back right now
+spry bench        measure the effect on this computer (under a minute)
+spry clean        show what storage can be cleared; add --yes to clear it
+spry install      start Spry when you sign in      (spry uninstall undoes it)
+spry update       get the newest Spry now (Spry also looks once a day; see Updates)
+spry rescue       put processes back after a crash
+spry front        show the process id of the app in front (checks that Spry can see it)
+</code></pre>
+<p dir="auto"><code class="notranslate">spry bench --threads 2</code> runs the measurement on two processor threads only (Windows and Linux).<br>
+Since 0.6.3 <code class="notranslate">spry bench</code> also reports Saver mode: what the held apps get done while the app in<br>
+front rests, and how busy the whole computer is then, with Spry off and with the hold kept.<br>
+Since 0.6.4 it also prints how many processor threads the held apps keep to in Saver mode.</p>
+<p dir="auto">On Windows, Spry is a windowed program, so in a terminal add <code class="notranslate">| more</code> to read the output of<br>
+<code class="notranslate">spry status</code> or <code class="notranslate">spry bench</code>.</p>
+<h2 dir="auto">Other tools</h2>
+<p dir="auto">Spry is the only one of these that runs on all three systems.</p>
+<markdown-accessiblity-table><div class="scroll"><table role="table">
+<thead>
+<tr>
+<th>Tool</th>
+<th>System</th>
+<th>Price</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="https://bitsum.com/" rel="nofollow">Process Lasso</a></td>
+<td>Windows</td>
+<td>Free version; Pro from $39.95 for one PC (<a href="https://bitsum.com/get-lasso-pro/" rel="nofollow">Bitsum</a>, checked 2026-11-19)</td>
+</tr>
+<tr>
+<td><a href="https://www.stclairsoft.com/AppTamer/" rel="nofollow">App Tamer</a></td>
+<td>macOS</td>
+<td>Paid, see the maker's page</td>
+</tr>
+<tr>
+<td><a href="https://gitlab.com/ananicy-cpp/ananicy-cpp" rel="nofollow">ananicy-cpp</a>, <a href="https://github.com/opsengine/cpulimit">cpulimit</a></td>
+<td>Linux</td>
+<td>Free, open source, set up by hand</td>
+</tr>
+<tr>
+<td><strong>Spry</strong></td>
+<td>Windows, macOS, Linux</td>
+<td>Free, open source</td>
+</tr>
+</tbody>
+</table></div></markdown-accessiblity-table>
+<p dir="auto">Process Lasso and App Tamer are older and have more settings. Spry is for people who want it to<br>
+work without settings.</p>
+<h2 dir="auto">Build from source</h2>
+<div class="highlight highlight-source-shell" dir="auto"><pre class="notranslate">cargo build --release      <span class="pl-c"><span class="pl-c">#</span> Rust 1.88 or newer</span>
+cargo <span class="pl-c1">test</span> --release       <span class="pl-c"><span class="pl-c">#</span> starts real busy processes for a few seconds</span></pre></div>
+<p dir="auto">The numbers in "What you get" are rebuilt from the CI results in <code class="notranslate">docs/bench/</code> with<br>
+<code class="notranslate">python docs/bench/summary.py</code>.</p>
+<h2 dir="auto">Licence</h2>
+<p dir="auto">MIT. Made by <a href="https://github.com/juw12">Juwen Lie</a>.</p>
+</main>
+<footer>
+This is the Spry guide: the project's README, laid out to read on a phone and kept for when there is no connection.
+It is the README of 2026-11-22. Spry itself is installed and run the way the guide says; the code is at
+<a href="https://github.com/juw12/spry">github.com/juw12/spry</a>.
+</footer>
+<script>
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+</script>
+</body>
+</html>
