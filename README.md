@@ -42,7 +42,7 @@ For a controlled comparison, open **Measure → Run comparison**. Each chart use
 for Off and On; throughput is better when higher, while typical and p95 response times are better when lower.
 The latest result is saved on this computer. A live change in CPU use alone is not proof of a speedup.
 
-## On an Android phone
+## On a phone
 
 - **Android:** [`Spry-android.apk`](https://github.com/juw12/spry/releases/download/android/Spry-android.apk): open the file on the phone and allow your browser to install apps once.
 - **iPhone:** open https://juw12.github.io/spry/ in Safari, tap Share, then **Add to Home Screen**.
