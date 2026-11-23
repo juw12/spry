@@ -45,8 +45,9 @@ The latest result is saved on this computer. A live change in CPU use alone is n
 ## On an Android phone
 
 - **Android:** [`Spry-android.apk`](https://github.com/juw12/spry/releases/download/android/Spry-android.apk): open the file on the phone and allow your browser to install apps once.
+- **iPhone:** open https://juw12.github.io/spry/ in Safari, tap Share, then **Add to Home Screen**.
 
-It is the web app (https://juw12.github.io/spry/) in a full-screen window of its own ([`android/`](android/README.md)) and changes with it. The build is opened on an Android emulator on GitHub before it is published: it installs, opens and stays up. No real phone has run it yet.
+It opens the Spry guide (https://juw12.github.io/spry/: this README laid out for a phone) in a full-screen window of its own ([`android/`](android/README.md)) and changes with it. Spry itself runs on a computer and is installed the way this README says; the app does not contain it. The build is opened on an Android emulator on GitHub before it is published: it installs, opens and stays up. No real phone has run it yet.
 
 ## What you get
 
