@@ -20,7 +20,7 @@ jobs:
         os: [windows-latest, macos-15, macos-15-intel, ubuntu-latest, ubuntu-24.04-arm]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Rust present (some runners come without it)
         if: runner.os == 'Linux'
         run: |
@@ -71,7 +71,7 @@ jobs:
         if: ${{ !cancelled() }}
         shell: bash
         run: ./target/release/spry bench --secs 4 --burners 2 --json | tee "bench/${{ matrix.os }}-2busy.json"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
           name: bench-${{ matrix.os }}
