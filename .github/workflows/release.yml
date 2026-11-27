@@ -35,7 +35,7 @@ jobs:
       # signing step below is skipped and the downloads are built exactly as before.
       HAVE_MAC_CERT: ${{ secrets.MACOS_CERT_P12 != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Rust present (some runners come without it)
         if: runner.os == 'Linux'
         run: |
@@ -108,13 +108,13 @@ jobs:
       # Anyone can check it:  gh attestation verify <file> -R juw12/spry
       - name: Build record
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: ${{ matrix.asset }}
 
       - name: Build record (the Mac app)
         if: matrix.app && startsWith(github.ref, 'refs/tags/v')
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: ${{ matrix.app }}
 
@@ -122,7 +122,7 @@ jobs:
       # and they must not lead to a release that still lacks a file. The last job below sets it.
       - name: Keep the downloads with a run that was started by hand
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset }}
           retention-days: 7
